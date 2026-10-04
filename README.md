@@ -45,7 +45,7 @@
 - PE、增长率和波动率的最小 Patch 与版本审计；
 - Strategy Canvas：代理指标、阈值来源和阻断式确认；
 - 浏览器端保存 Strategy Version、再次运行和 Execution 变化摘要（Demo MVP）；
-- 12 项本地与生产自动化测试及 GitHub Actions。
+- 13 项本地与生产自动化测试及 GitHub Actions。
 - 完整沪深 300 真实 Snapshot，覆盖率 100%，候选、临界未入选、其他未通过和数据缺口数量可对账。
 
 ## 当前限制

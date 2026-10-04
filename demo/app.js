@@ -320,7 +320,7 @@ async function confirm() {
     $("inputMessage").textContent = "请先构建策略草稿。";
     return;
   }
-  if (strategyState.status !== "CONFIRMED" && !$("clarificationAck").checked) {
+  if (strategyState.status !== "CONFIRMED" && strategyState.status !== "REVALIDATING" && !$("clarificationAck").checked) {
     $("inputMessage").textContent = "请先勾选确认代理指标、计算口径和阈值；未确认的澄清项不会执行。";
     return;
   }
