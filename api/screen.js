@@ -187,7 +187,10 @@ module.exports = async (request, response) => {
     const byCode = new Map(valuationItems.map((item) => [item.thscode, item]));
     const ranked = valuationStocks
       .map((stock) => ({ stock, valuation: byCode.get(stock.thscode) }))
-      .filter((item) => item.valuation && number(item.valuation.pe_ttm) !== null && number(item.valuation.pe_ttm) < peLimit)
+      .filter((item) => {
+        const pe = number(item.valuation?.pe_ttm);
+        return pe !== null && pe > 0 && pe < peLimit;
+      })
       .slice(0, EVALUATION_LIMIT);
     const endMs = number(valuation.payload?.data?.timestamp) || Date.now();
     const isStale = Date.now() - endMs > STALE_AFTER_MS;
