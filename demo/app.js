@@ -107,7 +107,7 @@ function renderResults() {
   $("candidateCount").textContent = candidates;
   $("versionTag").textContent = `策略 v${version}`;
   const metaText = apiMeta ? `真实数据：${apiMeta.evaluated_count}/${apiMeta.universe_total} 只已评估；${apiMeta.selection_note || ""}` : "";
-  $("resultSubtitle").textContent = `已确认：利润 CAGR > 10%，PE-TTM < ${threshold}x，60 日波动率 < 30%。${metaText}`;
+  $("resultSubtitle").textContent = `已确认：利润 CAGR > ${(growthThreshold * 100).toFixed(0)}%，PE-TTM < ${threshold}x，60 日波动率 < ${(volatilityThreshold * 100).toFixed(0)}%。${metaText}`;
   const asOf = apiMeta?.as_of ? new Date(apiMeta.as_of).toLocaleString("zh-CN", { hour12: false }) : "未获取";
   const asOfTag = document.querySelector(".result-tags .tag:last-child");
   if (asOfTag) asOfTag.textContent = `as of ${asOf}`;
