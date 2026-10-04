@@ -1,0 +1,76 @@
+{
+  "run_at": "2026-10-04T06:22:17.573Z",
+  "node": "v24.14.0",
+  "production_url": "https://ai-stock-selection-submission.vercel.app",
+  "totals": {
+    "tests": 12,
+    "passed": 8,
+    "failed": 4
+  },
+  "results": [
+    {
+      "name": "CAGR uses three annual observations",
+      "status": "PASS",
+      "duration_ms": 1
+    },
+    {
+      "name": "CAGR missing observations stays UNKNOWN",
+      "status": "PASS",
+      "duration_ms": 0
+    },
+    {
+      "name": "Null numeric fields remain missing",
+      "status": "PASS",
+      "duration_ms": 0
+    },
+    {
+      "name": "60-day volatility requires 61 closes",
+      "status": "PASS",
+      "duration_ms": 0
+    },
+    {
+      "name": "Invalid parameter returns INVALID before tool calls",
+      "status": "PASS",
+      "duration_ms": 0
+    },
+    {
+      "name": "Conflicting bounds return CONFLICT before tool calls",
+      "status": "PASS",
+      "duration_ms": 0
+    },
+    {
+      "name": "Compliance boundary and abnormal states are present",
+      "status": "PASS",
+      "duration_ms": 1
+    },
+    {
+      "name": "Tracked files contain no credential-shaped secrets",
+      "status": "PASS",
+      "duration_ms": 89
+    },
+    {
+      "name": "Production health reports configured Fuyao",
+      "status": "FAIL",
+      "duration_ms": 21103,
+      "error": "Command failed: curl.exe -sS --max-time 40 -w __HTTP_STATUS__%{http_code} https://ai-stock-selection-submission.vercel.app/api/health\ncurl: (28) Failed to connect to ai-stock-selection-submission.vercel.app port 443 after 21065 ms: Could not connect to server\r\n"
+    },
+    {
+      "name": "Production real-data screen returns traceable results",
+      "status": "FAIL",
+      "duration_ms": 21099,
+      "error": "Command failed: curl.exe -sS --max-time 40 -w __HTTP_STATUS__%{http_code} https://ai-stock-selection-submission.vercel.app/api/screen\ncurl: (28) Failed to connect to ai-stock-selection-submission.vercel.app port 443 after 21065 ms: Could not connect to server\r\n"
+    },
+    {
+      "name": "Production zero-result path is explicit",
+      "status": "FAIL",
+      "duration_ms": 21076,
+      "error": "Command failed: curl.exe -sS --max-time 40 -w __HTTP_STATUS__%{http_code} https://ai-stock-selection-submission.vercel.app/api/screen?pe_max=0.1\ncurl: (28) Failed to connect to ai-stock-selection-submission.vercel.app port 443 after 21041 ms: Could not connect to server\r\n"
+    },
+    {
+      "name": "Production conflict path rejects execution",
+      "status": "FAIL",
+      "duration_ms": 21091,
+      "error": "Command failed: curl.exe -sS --max-time 40 -w __HTTP_STATUS__%{http_code} https://ai-stock-selection-submission.vercel.app/api/screen?pe_max=20&pe_min=30\ncurl: (28) Failed to connect to ai-stock-selection-submission.vercel.app port 443 after 21055 ms: Could not connect to server\r\n"
+    }
+  ]
+}

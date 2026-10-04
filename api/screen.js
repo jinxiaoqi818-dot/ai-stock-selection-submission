@@ -37,6 +37,7 @@ async function fuyao(path, apiKey, timeoutMs = 4500) {
 }
 
 function number(value) {
+  if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -156,7 +157,7 @@ async function evaluateStock(stock, valuation, apiKey, endMs, peLimit, isStale) 
   };
 }
 
-module.exports = async (request, response) => {
+async function handler(request, response) {
   response.setHeader("Cache-Control", "no-store");
   const apiKey = process.env.FUYAO_API_KEY;
   if (!apiKey) return json(response, 503, { status: "TOOL_ERROR", message: "FUYAO_API_KEY is not configured." });
@@ -220,4 +221,7 @@ module.exports = async (request, response) => {
   } catch (error) {
     return json(response, 502, { status: "TOOL_ERROR", source: "fuyao", message: error.name === "AbortError" ? "Fuyao request timed out." : "Unable to complete the real-data screening request." });
   }
-};
+}
+
+handler._test = { calculateGrowth, calculateVolatility, number };
+module.exports = handler;

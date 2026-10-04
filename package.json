@@ -1,0 +1,11 @@
+{
+  "name": "ai-stock-selection-submission",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node tests/run-tests.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
