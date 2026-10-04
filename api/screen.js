@@ -3,7 +3,7 @@ const INDEX_CODE = "000300.SH";
 const THSCODE_PATTERN = /^\d{6}\.(SH|SZ|BJ)$/;
 // Vercel Hobby functions have a short execution ceiling; keep this MVP bounded.
 const EVALUATION_LIMIT = 3;
-const PE_LIMIT = 25;
+const DEFAULT_PE_LIMIT = 25;
 const GROWTH_LIMIT = 0.10;
 const VOLATILITY_LIMIT = 0.30;
 
@@ -68,7 +68,7 @@ function calculateVolatility(items) {
   return { value: Math.sqrt(variance) * Math.sqrt(252), status: "VALID", reason: "最近 60 个交易日对数收益率年化" };
 }
 
-async function evaluateStock(stock, valuation, apiKey, endMs) {
+async function evaluateStock(stock, valuation, apiKey, endMs, peLimit) {
   const code = stock.thscode;
   const requestIds = { valuation: requestId(valuation.__payload) };
   const pe = number(valuation.pe_ttm);
@@ -105,7 +105,7 @@ async function evaluateStock(stock, valuation, apiKey, endMs) {
   const overall = states.includes("TOOL_ERROR") ? "TOOL_ERROR" : states.includes("UNKNOWN") ? "UNKNOWN" : "VALID";
   const checks = {
     growth: growth.value === null ? "UNKNOWN" : growth.value > GROWTH_LIMIT ? "PASS" : "FAIL",
-    valuation: pe === null ? "UNKNOWN" : pe < PE_LIMIT ? "PASS" : "FAIL",
+    valuation: pe === null ? "UNKNOWN" : pe < peLimit ? "PASS" : "FAIL",
     stability: volatility.value === null ? "UNKNOWN" : volatility.value < VOLATILITY_LIMIT ? "PASS" : "FAIL",
   };
   const overallCheck = Object.values(checks).includes("TOOL_ERROR")
@@ -137,6 +137,8 @@ module.exports = async (request, response) => {
   const apiKey = process.env.FUYAO_API_KEY;
   if (!apiKey) return json(response, 503, { status: "TOOL_ERROR", message: "FUYAO_API_KEY is not configured." });
   try {
+    const requestedPe = Number(request.query?.pe_max);
+    const peLimit = Number.isFinite(requestedPe) && requestedPe > 0 && requestedPe <= 200 ? requestedPe : DEFAULT_PE_LIMIT;
     const constituents = await fuyao(`/api/a-share-index/constituents/ths-stock-list?thscode=${INDEX_CODE}`, apiKey);
     if (!constituents.ok) {
       return json(response, 502, { status: "TOOL_ERROR", source: "fuyao", request_id: requestId(constituents.payload), message: constituents.payload?.message || "Unable to load index constituents." });
@@ -153,10 +155,10 @@ module.exports = async (request, response) => {
     const byCode = new Map(valuationItems.map((item) => [item.thscode, item]));
     const ranked = valuationStocks
       .map((stock) => ({ stock, valuation: byCode.get(stock.thscode) }))
-      .filter((item) => item.valuation && number(item.valuation.pe_ttm) !== null && number(item.valuation.pe_ttm) < PE_LIMIT)
+      .filter((item) => item.valuation && number(item.valuation.pe_ttm) !== null && number(item.valuation.pe_ttm) < peLimit)
       .slice(0, EVALUATION_LIMIT);
     const endMs = number(valuation.payload?.data?.timestamp) || Date.now();
-    const results = await Promise.all(ranked.map((item) => evaluateStock(item.stock, { ...item.valuation, __payload: valuation.payload }, apiKey, endMs)));
+    const results = await Promise.all(ranked.map((item) => evaluateStock(item.stock, { ...item.valuation, __payload: valuation.payload }, apiKey, endMs, peLimit)));
     const allRequestIds = {
       constituents: requestId(constituents.payload),
       valuations: requestId(valuation.payload),
@@ -171,7 +173,7 @@ module.exports = async (request, response) => {
       universe_total: universeTotal,
       evaluated_count: results.length,
       evaluation_limit: EVALUATION_LIMIT,
-      selection_note: `仅对 PE-TTM < ${PE_LIMIT} 的前 ${EVALUATION_LIMIT} 只标的计算财务和波动率，未评估标的不代表 FAIL。`,
+      selection_note: `仅对 PE-TTM < ${peLimit} 的前 ${EVALUATION_LIMIT} 只标的计算财务和波动率，未评估标的不代表 FAIL。`,
       data: results,
     });
   } catch (error) {

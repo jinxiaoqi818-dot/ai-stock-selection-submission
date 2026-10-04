@@ -1,16 +1,60 @@
 const example = "在沪深300里找近两年利润增长较快、PE不要太高、走势比较稳定的公司。";
 let threshold = 25;
+let growthThreshold = 0.10;
+let volatilityThreshold = 0.30;
 let version = 1;
+let strategyState = null;
 const comparedCodes = new Set();
 let lastEvidenceTrigger = null;
 let securities = [];
 let apiMeta = null;
 
-const conditions = [
+let conditions = [
   { id: "growth", name: "利润增长", metric: "归母净利润两年 CAGR", detail: "建议阈值：大于 10%", operator: ">", value: 0.10, unit: "%", period: "2Y" },
   { id: "valuation", name: "估值", metric: "PE-TTM", detail: "建议阈值：小于 25x", operator: "<", value: () => threshold, unit: "x", period: "TTM" },
   { id: "stability", name: "走势稳定性", metric: "60 日年化波动率", detail: "建议阈值：小于 30%", operator: "<", value: 0.30, unit: "%", period: "60TD" }
 ];
+
+function createStrategyState(rawText) {
+  return {
+    strategy_id: `str_${Date.now().toString(36)}`,
+    version,
+    status: "READY_TO_CONFIRM",
+    raw_text: rawText,
+    universe: { type: "index", id: "000300.SH", name: "沪深 300", resolution_status: "RESOLVED" },
+    conditions: conditions.map((condition) => ({ id: condition.id, metric: condition.metric, operator: condition.operator, value: typeof condition.value === "function" ? condition.value() : condition.value, unit: condition.unit, period: condition.period, status: "PROPOSED" })),
+    ambiguities: [],
+    audit: [{ event: "PARSED", at: new Date().toISOString(), version }],
+  };
+}
+
+function parseIntent(text) {
+  const ambiguities = [];
+  const unsupported = [];
+  const normalized = text.replace(/\s+/g, "");
+  const hasUniverse = /沪深?300|000300\.SH/i.test(normalized);
+  if (!hasUniverse) ambiguities.push("股票池未明确识别；当前仅支持沪深 300（000300.SH）。");
+  if (/ESG|分红|股息|ROE|市值|行业/.test(normalized)) unsupported.push("检测到当前 Registry 未支持的指标，请移除后再执行。");
+  const growthMatch = normalized.match(/(?:利润|净利润)(?:增长|CAGR|增速)?(?:超过|大于|高于|>|不少于)?(\d+(?:\.\d+)?)%/i);
+  growthThreshold = growthMatch ? Number(growthMatch[1]) / 100 : 0.10;
+  if (!growthMatch && /利润|增长|增速|CAGR/.test(normalized)) ambiguities.push("“增长较快”未给出阈值，暂以 10% 作为建议值，确认前请核对。");
+  const peMatch = normalized.match(/PE(?:-TTM)?(?:不超过|小于|低于|少于|<|不高于|改成)?(\d+(?:\.\d+)?)/i);
+  threshold = peMatch ? Number(peMatch[1]) : 25;
+  if (!peMatch && /PE|估值|便宜|合理|不要太高/.test(normalized)) ambiguities.push("PE 条件未给出明确上限，暂以 25x 作为建议值，确认前请核对。");
+  const volMatch = normalized.match(/(?:波动率|波动)(?:小于|低于|不超过|<)?(\d+(?:\.\d+)?)%/i);
+  volatilityThreshold = volMatch ? Number(volMatch[1]) / 100 : 0.30;
+  if (!volMatch && /稳定|波动/.test(normalized)) ambiguities.push("“走势稳定”已映射为 60 日年化波动率，但未给出阈值，暂以 30% 作为建议值。");
+  if (!hasUniverse) ambiguities.push("请确认股票池后再执行。");
+  return { ambiguities: [...ambiguities, ...unsupported], unsupported: unsupported.length > 0 };
+}
+
+function syncConditions() {
+  conditions = [
+    { id: "growth", name: "利润增长", metric: "归母净利润两年 CAGR", detail: `建议阈值：大于 ${(growthThreshold * 100).toFixed(0)}%`, operator: ">", value: growthThreshold, unit: "%", period: "2Y" },
+    { id: "valuation", name: "估值", metric: "PE-TTM", detail: `建议阈值：小于 ${threshold}x`, operator: "<", value: () => threshold, unit: "x", period: "TTM" },
+    { id: "stability", name: "走势稳定性", metric: "60 日年化波动率", detail: `建议阈值：小于 ${(volatilityThreshold * 100).toFixed(0)}%`, operator: "<", value: volatilityThreshold, unit: "%", period: "60TD" }
+  ];
+}
 
 const $ = (id) => document.getElementById(id);
 function setWorkflow(stage) {
@@ -123,19 +167,42 @@ function parse() {
   const text = $("strategyInput").value.trim();
   if (!text) { $("inputMessage").textContent = "请先输入一段选股想法。"; return; }
   if (/必涨|买入|收益|推荐/.test(text)) { $("inputMessage").textContent = "本产品仅编译筛选策略，不生成涨跌预测、收益承诺或买卖建议。请描述可验证的筛选条件。"; return; }
-  renderConditions(); $("clarificationPanel").classList.remove("hidden"); $("strategyStatus").textContent = "待确认"; $("strategyStatus").className = "status warning"; $("inputMessage").textContent = "已提取股票池和三项条件；建议阈值仍需由你确认。"; setWorkflow(2); setHeaderVersion("草稿待确认"); $("clarificationPanel").scrollIntoView({ behavior: "smooth", block: "start" }); $("confirmButton").focus();
+  const parsed = parseIntent(text);
+  syncConditions();
+  strategyState = createStrategyState(text);
+  strategyState.ambiguities = parsed.ambiguities;
+  strategyState.status = parsed.unsupported ? "UNSUPPORTED" : parsed.ambiguities.length ? "NEEDS_CLARIFICATION" : "READY_TO_CONFIRM";
+  strategyState.audit.push({ event: strategyState.status, at: new Date().toISOString(), ambiguities: parsed.ambiguities });
+  renderConditions(); $("clarificationPanel").classList.remove("hidden");
+  $("strategyStatus").textContent = strategyState.status === "UNSUPPORTED" ? "不支持" : strategyState.status === "NEEDS_CLARIFICATION" ? "待澄清" : "待确认";
+  $("strategyStatus").className = `status ${strategyState.status === "UNSUPPORTED" ? "fail" : "warning"}`;
+  const note = parsed.ambiguities.length ? `已结构化解析。执行前请确认：${parsed.ambiguities.join("；")}` : "已结构化解析股票池和三项条件，建议阈值仍需由你确认。";
+  $("inputMessage").textContent = note;
+  setWorkflow(2); setHeaderVersion("草稿待确认"); $("clarificationPanel").scrollIntoView({ behavior: "smooth", block: "start" }); $("confirmButton").focus();
 }
 async function confirm() {
+  if (strategyState?.status === "UNSUPPORTED") {
+    $("inputMessage").textContent = "当前策略包含未支持的指标，已阻止执行。请删除未支持条件后重新构建策略。";
+    return;
+  }
+  if (!strategyState) {
+    $("inputMessage").textContent = "请先构建策略草稿。";
+    return;
+  }
+  strategyState.status = "CONFIRMED";
+  strategyState.audit.push({ event: "CONFIRMED", at: new Date().toISOString(), version: strategyState.version });
   $("clarificationPanel").classList.add("hidden"); $("resultsPanel").classList.remove("hidden");
   $("strategyStatus").textContent = "正在获取真实数据"; $("strategyStatus").className = "status warning"; setWorkflow(3); setHeaderVersion("真实数据加载中");
   $("resultRows").innerHTML = `<tr><td colspan="7" class="helper">正在获取沪深 300 成分、估值、财务和历史 K 线，请稍候...</td></tr>`;
   $("resultsPanel").scrollIntoView({ behavior: "smooth", block: "start" });
   try {
-    const response = await fetch("/api/screen");
+    const response = await fetch(`/api/screen?pe_max=${encodeURIComponent(threshold)}`);
     const payload = await response.json();
     if (!response.ok || payload.status === "TOOL_ERROR") throw new Error(payload.message || "真实数据接口调用失败");
     securities = Array.isArray(payload.data) ? payload.data : [];
     apiMeta = payload;
+    strategyState.status = "RESULT_READY";
+    strategyState.audit.push({ event: "RESULT_READY", at: new Date().toISOString(), request_id: payload.request_id, as_of: payload.as_of });
     $("strategyStatus").textContent = "已执行"; $("strategyStatus").className = "status pass"; setHeaderVersion(`策略 v${version}`); renderResults();
   } catch (error) {
     securities = []; apiMeta = null;
@@ -146,13 +213,31 @@ async function confirm() {
   }
 }
 function previewPatch() {
-  const text = $("editInput").value; const matched = text.match(/PE\s*(?:改成|小于|<)\s*(\d+)/i);
-  if (!matched) { $("patchPreview").innerHTML = `<p>未识别到可执行的 PE 修改。请使用“把 PE 改成 20，其他不变”。</p>`; $("patchPreview").classList.remove("hidden"); return; }
-  const next = Number(matched[1]);
-  $("patchPreview").innerHTML = `<p><b>Patch 预览</b></p><p>估值条件：<span class="patch-old">PE-TTM &lt; ${threshold}x</span> <span class="patch-new">PE-TTM &lt; ${next}x</span></p><p>其余两个条件保持不变。确认后生成策略 v${version + 1} 并重新筛选。</p><div class="patch-actions"><button id="applyPatch" class="primary" type="button" data-next="${next}">确认修改并重新执行</button><button id="cancelPatch" class="text-action" type="button">取消</button></div>`;
+  const text = $("editInput").value.trim();
+  const matched = text.match(/PE(?:-TTM)?\s*(?:改成|调整为|小于|<)\s*(\d+(?:\.\d+)?)/i);
+  const growthMatch = text.match(/(?:利润增长|CAGR|增长率)\s*(?:改成|调整为|大于|超过|>)\s*(\d+(?:\.\d+)?)%/i);
+  const volatilityMatch = text.match(/(?:波动率|波动)\s*(?:改成|调整为|小于|<)\s*(\d+(?:\.\d+)?)%/i);
+  let patch = null;
+  if (matched) patch = { path: "/conditions/1/value", label: "PE-TTM", oldValue: threshold, newValue: Number(matched[1]), field: "valuation" };
+  else if (growthMatch) patch = { path: "/conditions/0/value", label: "利润 CAGR", oldValue: growthThreshold * 100, newValue: Number(growthMatch[1]), field: "growth" };
+  else if (volatilityMatch) patch = { path: "/conditions/2/value", label: "60 日波动率", oldValue: volatilityThreshold * 100, newValue: Number(volatilityMatch[1]), field: "stability" };
+  if (!patch) { $("patchPreview").innerHTML = `<p>未识别到可执行修改。支持“PE 改成 20”“利润增长率改成 15%”“波动率改成 25%”。</p>`; $("patchPreview").classList.remove("hidden"); return; }
+  const audit = { op: "replace", path: patch.path, old_value: patch.oldValue, value: patch.newValue, base_version: version, strategy_id: strategyState?.strategy_id || "未创建", at: new Date().toISOString() };
+  const auditHash = btoa(JSON.stringify(audit)).slice(0, 16);
+  $("patchPreview").innerHTML = `<p><b>Patch 预览</b> <span class="tag">${auditHash}</span></p><p>${patch.label}：<span class="patch-old">${patch.oldValue}${patch.field === "valuation" ? "x" : "%"}</span> <span class="patch-new">${patch.newValue}${patch.field === "valuation" ? "x" : "%"}</span></p><p>仅修改 <code>${patch.path}</code>，其余条件保持不变。确认后生成策略 v${version + 1} 并重新筛选。</p><div class="patch-actions"><button id="applyPatch" class="primary" type="button">确认修改并重新执行</button><button id="cancelPatch" class="text-action" type="button">取消</button></div>`;
   $("patchPreview").classList.remove("hidden");
   setWorkflow(4);
-  $("applyPatch").addEventListener("click", (event) => { threshold = Number(event.currentTarget.dataset.next); version += 1; $("patchPreview").classList.add("hidden"); setWorkflow(3); setHeaderVersion(`策略 v${version}`); renderConditions(); renderResults(); });
+  $("applyPatch").addEventListener("click", () => {
+    if (patch.field === "valuation") threshold = patch.newValue;
+    if (patch.field === "growth") growthThreshold = patch.newValue / 100;
+    if (patch.field === "stability") volatilityThreshold = patch.newValue / 100;
+    version += 1; syncConditions();
+    if (strategyState) {
+      strategyState.version = version; strategyState.status = "REVALIDATING"; strategyState.conditions = conditions.map((condition) => ({ id: condition.id, metric: condition.metric, operator: condition.operator, value: typeof condition.value === "function" ? condition.value() : condition.value, unit: condition.unit, period: condition.period, status: "PROPOSED" }));
+      strategyState.audit.push({ event: "PATCH_CONFIRMED", at: new Date().toISOString(), patch: audit, patch_hash: auditHash, version });
+    }
+    $("patchPreview").classList.add("hidden"); setWorkflow(3); setHeaderVersion(`策略 v${version}`); renderConditions(); void confirm();
+  });
   $("cancelPatch").addEventListener("click", () => $("patchPreview").classList.add("hidden"));
 }
 $("exampleButton").addEventListener("click", () => { $("strategyInput").value = example; $("strategyInput").focus(); });
