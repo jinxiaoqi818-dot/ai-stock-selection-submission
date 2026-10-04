@@ -53,7 +53,7 @@ function renderResults() {
     const state = overall(security);
     const selected = comparedCodes.has(security.code);
     const disabled = comparedCodes.size >= 3 && !selected ? "disabled" : "";
-    return `<tr><td class="security">${security.name}<span>${security.code}</span></td>${outcomes.map((outcome) => `<td><span class="status ${statusClass(outcome.state)}">${outcome.state}</span><span class="mini">${outcome.value === null ? "数据缺失" : conditionValue(outcome)}</span></td>`).join("")}<td><span class="status ${statusClass(state)}">${statusText(state)}</span></td><td><label class="compare-choice"><input class="compare-input" type="checkbox" data-code="${security.code}" ${selected ? "checked" : ""} ${disabled} /><span>加入对比</span></label></td><td><button class="evidence-button" data-code="${security.code}" type="button">查看证据</button></td></tr>`;
+    return `<tr><td class="security">${security.name}<span>${security.code}</span></td>${outcomes.map((outcome, index) => `<td><span class="status ${statusClass(outcome.state)}">${outcome.state}</span><span class="mini">${outcome.value === null ? "数据缺失" : conditionValue(outcome, conditions[index])}</span></td>`).join("")}<td><span class="status ${statusClass(state)}">${statusText(state)}</span></td><td><label class="compare-choice"><input class="compare-input" type="checkbox" data-code="${security.code}" ${selected ? "checked" : ""} ${disabled} /><span>加入对比</span></label></td><td><button class="evidence-button" data-code="${security.code}" type="button">查看证据</button></td></tr>`;
   }).join("");
   $("resultRows").innerHTML = rows;
   const growthPass = securities.filter(s => resultFor(s, conditions[0]).state === "PASS").length;
@@ -72,7 +72,7 @@ function renderResults() {
   }));
   renderComparison();
 }
-function conditionValue(outcome) { return outcome.value === null ? "数据缺失" : (outcome.target !== undefined ? `${outcome.value.toFixed(1)}x` : percent(outcome.value)); }
+function conditionValue(outcome, condition) { return outcome.value === null ? "数据缺失" : fmt(condition, outcome.value); }
 function renderComparison() {
   const selected = securities.filter((security) => comparedCodes.has(security.code));
   $("comparisonCount").textContent = `已选 ${selected.length} / 3`;

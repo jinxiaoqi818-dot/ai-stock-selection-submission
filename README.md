@@ -29,6 +29,13 @@
 
 Demo 使用的是**构造的演示数据**，页面顶部会明确标识。它用于展示交互和规则引擎的产品闭环，不能作为真实金融结论。正式部署时，应按 `docs/12_Data_and_Tools.md` 的运行时 Tool Catalog 完成扶摇与 iFinD 适配，并在服务端注入密钥。
 
+## 在线访问与源码
+
+- 在线 Demo：<https://jinxiaoqi818-dot.github.io/ai-stock-selection-submission/>
+- 源码仓库：<https://github.com/jinxiaoqi818-dot/ai-stock-selection-submission>
+
+GitHub Pages 从 `main` 分支自动发布。根地址会跳转到 `demo/`，该站点为构造数据演示，不提供真实金融数据或投资结论。
+
 ## 产品边界
 
 - 不输出涨跌预测、收益承诺或买卖建议。
@@ -39,7 +46,6 @@ Demo 使用的是**构造的演示数据**，页面顶部会明确标识。它�
 
 ## 提交前需要补齐
 
-1. 部署到可访问 URL，并将 URL 填入提交说明。
-2. 在连接真实 MCP 后记录实际 Tool 名称、请求参数、响应字段和运行日志。
-3. 使用真实运行记录填写 AI 使用与验证记录，不能照抄或虚构。
-4. 运行 `tests/test-cases.md` 的全部用例，保存测试结果。
+1. 在连接真实 MCP 后记录实际 Tool 名称、请求参数、响应字段和运行日志。
+2. 使用真实运行记录填写 AI 使用与验证记录，不能照抄或虚构。
+3. 运行 `tests/test-cases.md` 的全部用例，保存测试结果。

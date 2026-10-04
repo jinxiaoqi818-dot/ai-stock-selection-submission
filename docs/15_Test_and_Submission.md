@@ -32,8 +32,8 @@
 
 ## 3. 最终提交清单
 
-- [ ] 可访问且可实际操作的 Web 产品 URL
-- [ ] 源码仓库与 README，包含启动方式、环境变量和已知限制
+- [x] 可访问且可实际操作的 Web 产品 URL：<https://jinxiaoqi818-dot.github.io/ai-stock-selection-submission/>
+- [x] 源码仓库与 README，包含启动方式、环境变量和已知限制：<https://github.com/jinxiaoqi818-dot/ai-stock-selection-submission>
 - [ ] 扶摇真实核心筛选调用的 Tool Contract 或运行日志
 - [ ] iFinD 实际调用记录，或明确其在 MVP 中为何降级
 - [ ] 主链路、异常、合规测试报告
