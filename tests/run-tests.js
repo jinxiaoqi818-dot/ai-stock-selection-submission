@@ -109,6 +109,12 @@ async function run() {
     for (const marker of ["高增长", "低估值", "volatilityHint", "visibleSecurities", "currentPage"]) assert.ok(app.includes(marker), `missing parsing/pagination marker ${marker}`);
   });
 
+  await test("Irrelevant and incomplete intents are gated", () => {
+    const app = fs.readFileSync(path.join(ROOT, "demo", "app.js"), "utf8");
+    for (const marker of ["IRRELEVANT", "GREETING", "NEEDS_UNIVERSE", "暂无符合你要求的信息", "当前仅支持沪深 300"]) assert.ok(app.includes(marker), `missing intent gate marker ${marker}`);
+    assert.ok(app.includes("setConfirmAvailability"), "confirm gate missing");
+  });
+
   await test("Tracked files contain no credential-shaped secrets", () => {
     const files = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT }).toString("utf8").split("\0").filter(Boolean);
     const prefixes = [["sk", "fuyao", ""].join("-"), ["ghp", ""].join("_"), ["github", "pat", ""].join("_")];

@@ -60,6 +60,20 @@ function parseIntent(text) {
   return { ambiguities: [...ambiguities, ...unsupported], unsupported: unsupported.length > 0, conflict };
 }
 
+function classifyInput(text) {
+  const normalized = text.replace(/[\s，。！？、,.!?]/g, "");
+  if (/^(你好|您好|嗨|hello|hi|帮助|help|你能做什么|怎么用|有什么功能)$/i.test(normalized)) return "GREETING";
+  const financeSignal = /股票|选股|证券|公司|标的|股票池|沪深|000300|PE|市盈率|估值|增长|利润|增速|CAGR|波动|稳定|低估值|高增长|行业|银行股|科技股|消费股|ESG|ROE|分红|股息/i.test(normalized);
+  return financeSignal ? "FINANCE" : "IRRELEVANT";
+}
+
+function setConfirmAvailability(status) {
+  const button = $("confirmButton");
+  const blocked = ["IRRELEVANT", "GREETING", "NEEDS_UNIVERSE", "UNSUPPORTED", "CONFLICT"].includes(status);
+  button.disabled = blocked;
+  button.classList.toggle("hidden", blocked);
+}
+
 function syncConditions() {
   conditions = [
     { id: "growth", name: "利润增长", metric: "归母净利润两年 CAGR", detail: `建议阈值：大于 ${(growthThreshold * 100).toFixed(0)}%`, operator: ">", value: growthThreshold, unit: "%", period: "2Y" },
@@ -309,19 +323,40 @@ function parse() {
   const text = $("strategyInput").value.trim();
   if (!text) { $("inputMessage").textContent = "请先输入一段选股想法。"; return; }
   if (/必涨|买入|收益|推荐/.test(text)) { $("inputMessage").textContent = "本产品仅编译筛选策略，不生成涨跌预测、收益承诺或买卖建议。请描述可验证的筛选条件。"; return; }
+  const inputType = classifyInput(text);
+  if (inputType === "GREETING") {
+    strategyState = { status: "GREETING", raw_text: text };
+    $("clarificationPanel").classList.add("hidden");
+    $("resultsPanel").classList.add("hidden");
+    $("strategyStatus").textContent = "能力说明";
+    $("strategyStatus").className = "status neutral";
+    $("inputMessage").textContent = "你好！我可以把股票筛选想法拆成股票池、增长、估值和稳定性条件，再结合真实数据核验。请描述你的选股目标。";
+    setConfirmAvailability("GREETING");
+    return;
+  }
+  if (inputType === "IRRELEVANT") {
+    strategyState = { status: "IRRELEVANT", raw_text: text };
+    $("clarificationPanel").classList.add("hidden");
+    $("resultsPanel").classList.add("hidden");
+    $("strategyStatus").textContent = "输入不相关";
+    $("strategyStatus").className = "status warning";
+    $("inputMessage").textContent = "暂无符合你要求的信息：当前输入与股票筛选无关。请描述股票池和可验证的选股条件。";
+    setConfirmAvailability("IRRELEVANT");
+    return;
+  }
   const parsed = parseIntent(text);
   $("clarificationAck").checked = false;
   syncConditions();
   strategyState = createStrategyState(text);
   strategyState.ambiguities = parsed.ambiguities;
-  strategyState.status = parsed.conflict ? "CONFLICT" : parsed.unsupported ? "UNSUPPORTED" : parsed.ambiguities.length ? "NEEDS_CLARIFICATION" : "READY_TO_CONFIRM";
+  strategyState.status = parsed.conflict ? "CONFLICT" : parsed.unsupported ? "UNSUPPORTED" : !/沪深\s*300|沪深三百|000300\.SH/i.test(text.replace(/\s/g, "")) ? "NEEDS_UNIVERSE" : parsed.ambiguities.length ? "NEEDS_CLARIFICATION" : "READY_TO_CONFIRM";
   strategyState.audit.push({ event: strategyState.status, at: new Date().toISOString(), ambiguities: parsed.ambiguities });
   renderConditions(); $("clarificationPanel").classList.remove("hidden");
-  $("strategyStatus").textContent = strategyState.status === "CONFLICT" ? "条件冲突" : strategyState.status === "UNSUPPORTED" ? "不支持" : strategyState.status === "NEEDS_CLARIFICATION" ? "待澄清" : "待确认";
+  $("strategyStatus").textContent = strategyState.status === "CONFLICT" ? "条件冲突" : strategyState.status === "UNSUPPORTED" ? "不支持" : strategyState.status === "NEEDS_UNIVERSE" ? "待选择股票池" : strategyState.status === "NEEDS_CLARIFICATION" ? "待澄清" : "待确认";
   $("strategyStatus").className = `status ${["UNSUPPORTED", "CONFLICT"].includes(strategyState.status) ? "fail" : "warning"}`;
-  const note = parsed.ambiguities.length ? `已结构化解析。执行前请确认：${parsed.ambiguities.join("；")}` : "已结构化解析股票池和三项条件，建议阈值仍需由你确认。";
+  const note = strategyState.status === "NEEDS_UNIVERSE" ? "已识别为选股意图，但尚未指定股票池。当前仅支持沪深 300（000300.SH），确认股票池后才能执行。" : parsed.ambiguities.length ? `已结构化解析。执行前请确认：${parsed.ambiguities.join("；")}` : "已结构化解析股票池和三项条件，建议阈值仍需由你确认。";
   $("inputMessage").textContent = note;
-  setWorkflow(2); setHeaderVersion("草稿待确认"); $("clarificationPanel").scrollIntoView({ behavior: "smooth", block: "start" }); $("confirmButton").focus();
+  setConfirmAvailability(strategyState.status); setWorkflow(2); setHeaderVersion("草稿待确认"); $("clarificationPanel").scrollIntoView({ behavior: "smooth", block: "start" }); if (!$("confirmButton").classList.contains("hidden")) $("confirmButton").focus();
 }
 async function confirm() {
   if (strategyState?.status === "CONFLICT") {
@@ -332,6 +367,7 @@ async function confirm() {
     $("inputMessage").textContent = "当前策略包含未支持的指标，已阻止执行。请删除未支持条件后重新构建策略。";
     return;
   }
+  if (["IRRELEVANT", "GREETING", "NEEDS_UNIVERSE"].includes(strategyState?.status)) return;
   if (!strategyState) {
     $("inputMessage").textContent = "请先构建策略草稿。";
     return;
