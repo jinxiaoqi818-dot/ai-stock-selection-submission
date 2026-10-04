@@ -1,60 +1,102 @@
-# AI 智能选股策略编译器
+# AI 投资假设编译与监控工作台
 
-这是“自然语言智能选股与策略解释器”笔试题的可运行交付包。产品将用户的选股表达转为可检查、可修改、需确认后才执行的 Strategy State；筛选和条件判断由确定性规则完成，AI 只负责理解、澄清、结构化和基于证据的说明。
+这是“自然语言智能选股与策略解释器”的可运行交付。产品帮助用户把“经营改善、估值合理、走势稳定”等模糊判断拆成可检查的代理指标和规则，再由确定性引擎结合真实金融数据执行和生成 Evidence。
 
-## 交付内容
+当前 Web 版本完成了真实扶摇接口、规则计算、异常状态、Evidence、结构化规则解析和最小 Patch。它仍受 Vercel Hobby 运行时间限制，只对部分沪深 300 成分进行深度评估，因此当前定位是**真实数据策略样本验证**，不是完整沪深 300 候选名单。
+
+## 在线访问
+
+- Web 产品：<https://ai-stock-selection-submission.vercel.app/demo/>
+- 生产健康检查：<https://ai-stock-selection-submission.vercel.app/api/health>
+- 真实筛选 API：<https://ai-stock-selection-submission.vercel.app/api/screen>
+- GitHub Pages 静态镜像：<https://jinxiaoqi818-dot.github.io/ai-stock-selection-submission/>
+- 源码仓库：<https://github.com/jinxiaoqi818-dot/ai-stock-selection-submission>
+
+## 方案 B 产品判断
+
+在第一版实现和真实数据验证后，候选人进行了第二轮产品复盘，确认三个优先问题：
+
+1. 有限样本不能代表完整股票池候选，正式筛选必须覆盖率 100% 并能对账；
+2. 模糊投资意图不能被静默转换为固定阈值，必须先选择代理指标和阈值来源；
+3. 一次性结果不足以形成持续价值，已确认策略需要保存、重跑并展示状态变化。
+
+因此目标方案调整为“投资假设编译与持续验证”：
+
+```text
+自然语言假设
+  -> 意图和代理指标澄清
+  -> 用户确认 Strategy State
+  -> 完整股票池确定性执行
+  -> 候选、临界未入选、数据缺口和异常
+  -> Evidence 核验
+  -> 保存与再次运行
+  -> 查看状态变化
+```
+
+详细决策见 `docs/Business_Owner_Review_and_Revision.md`。
+
+## 当前可运行能力
+
+- 扶摇真实沪深 300 成分、估值、利润表和历史 K 线；
+- 两年归母净利润 CAGR、PE-TTM、60 日年化波动率；
+- `PASS`、`FAIL`、`UNKNOWN`、`STALE`、`CONFLICT`、`TOOL_ERROR`、`PARTIAL` 和 `ZERO_RESULT`；
+- 来源、时点、字段映射和 `request_id`；
+- 模糊条件提示、明确阈值识别和 Unsupported 阻断；
+- PE、增长率和波动率的最小 Patch 与版本审计；
+- 12 项本地与生产自动化测试及 GitHub Actions。
+
+## 当前限制
+
+- 生产筛选只读取部分成分的估值，并最多深度评估 3 只；未评估标的不代表 FAIL；
+- 模糊条件仍使用规则解析器和模板建议值，尚未实现方案 B 的代理指标选择界面；
+- 产品运行时尚未接入外部 LLM，不声称具备开放语义理解能力；
+- Strategy State 尚未服务端持久化，没有保存、重跑和 Execution diff；
+- 尚未接入 iFinD、定期监控或回测；
+- 20 名用户、50 次真实执行和 100 条 Evidence 抽样尚未执行。
+
+## 下一实施顺序
+
+1. 使用快照任务完整获取并标准化沪深 300 数据，正式执行覆盖率达到 100%；
+2. 实现 Strategy Canvas：代理指标、阈值来源和阻断式澄清；
+3. 将结果分为候选、临界未入选、其他未通过、数据缺口和工具错误；
+4. 持久化 Strategy Version 和 Execution，支持保存、一键重跑和变化摘要；
+5. 上述闭环验证后，再评估定期监控、iFinD 和回测。
+
+## 本地运行
+
+静态页面可以直接打开 `demo/index.html`，但真实 API 需要 Vercel 或兼容的 Node Serverless 环境。
+
+```bash
+npm test
+npx vercel dev
+```
+
+服务端必须配置：
+
+```text
+FUYAO_API_KEY
+```
+
+密钥只能存放在本地未跟踪环境文件或部署平台 Secret 中，不能提交到仓库或浏览器代码。
+
+## 文档导航
 
 | 路径 | 内容 |
 | --- | --- |
-| `docs/10_PRD.md` | MVP 产品需求文档 |
-| `docs/11_AI_Design.md` | Agent Prompt、Schema、状态机与 Eval |
-| `docs/12_Data_and_Tools.md` | 扶摇、iFinD 的工具映射、数据契约和异常策略 |
-| `docs/13_UIUX_Spec.md` | 页面、组件、交互与视觉规范 |
-| `docs/14_Engineering_Plan.md` | 架构、任务拆解和真实数据接入路径 |
-| `docs/15_Test_and_Submission.md` | 测试说明、AI 使用记录模板和提交清单 |
-| `docs/Business_Owner_Review_and_Revision.md` | 业务问题复核、范围修订与 G0-G3 阶段闸门 |
-| `docs/CFO_Review_and_Acceptance.md` | 成本审查与 A01-A13 量化验收标准 |
-| `demo/` | 可直接打开的静态交互 Demo |
-| `tests/TEST_REPORT.md` | 已执行与待执行测试的真实状态 |
-
-## 运行 Demo
-
-直接双击打开 `demo/index.html`，即可体验完整的演示主链路：
-
-1. 输入或使用示例策略。
-2. 查看 AI 解析并确认策略。
-3. 执行确定性筛选，查看 Pass、Fail、Unknown 与证据。
-4. 选择最多三只标的进行同口径事实对比，查看数据缺口与待研究问题。
-5. 输入“把 PE 改成 20，其他不变”，确认 Patch 后重新运行。
-
-Demo 使用的是**构造的演示数据**，页面顶部会明确标识。它用于展示交互和规则引擎的产品闭环，不能作为真实金融结论。正式部署时，应按 `docs/12_Data_and_Tools.md` 的运行时 Tool Catalog 完成扶摇与 iFinD 适配，并在服务端注入密钥。
-
-## 在线访问与源码
-
-- 在线 Demo：<https://jinxiaoqi818-dot.github.io/ai-stock-selection-submission/>
-- 源码仓库：<https://github.com/jinxiaoqi818-dot/ai-stock-selection-submission>
-
-GitHub Pages 从 `main` 分支自动发布。根地址会跳转到 `demo/`，该站点为构造数据演示，不提供真实金融数据或投资结论。
-
-## Vercel 服务端接口
-
-部署到 Vercel 后，在项目环境变量中配置 `FUYAO_API_KEY`。密钥仅可用于 Vercel 服务端，严禁放入浏览器代码、`.env.example` 或 Git 仓库。
-
-- `GET /api/health`：检查服务和扶摇密钥是否已配置，不会返回密钥。
-- `GET /api/valuations?thscodes=600519.SH,000858.SZ`：代理扶摇 A 股估值快照，返回来源、数据时点、`request_id` 和上游业务状态。
-
-接口仍未接入当前静态 Demo。下一阶段会将其扩展为完整的“成分股、利润增长、PE-TTM、60 日波动率”确定性筛选服务，再替换构造样例。
+| `docs/10_PRD.md` | 方案 B 产品需求、用户任务和验收分层 |
+| `docs/11_AI_Design.md` | AI 职责、Intent Map、Strategy State 和 Eval |
+| `docs/12_Data_and_Tools.md` | 全量快照、分位指标、覆盖率和数据质量 |
+| `docs/13_UIUX_Spec.md` | Strategy Canvas、全量结果、保存和变化体验 |
+| `docs/14_Engineering_Plan.md` | Snapshot Job、持久化、Execution diff 和实现顺序 |
+| `docs/15_Test_and_Submission.md` | 测试、AI 使用记录和提交清单 |
+| `docs/Business_Owner_Review_and_Revision.md` | 候选人的产品复盘与方案 B |
+| `docs/CFO_Review_and_Acceptance.md` | Pilot 量化验收与预算闸门 |
+| `tests/TEST_REPORT.md` | 已执行测试和未完成项 |
 
 ## 产品边界
 
-- 不输出涨跌预测、收益承诺或买卖建议。
-- 用户确认前不执行最终策略；每次修改均生成待确认 Patch。
-- 事实来自工具数据，计算和判断来自确定性引擎；LLM 不编造数值和结论。
-- 缺失、过期、冲突和工具失败分别保留为 `UNKNOWN`、`STALE`、`CONFLICT`、`TOOL_ERROR`，不伪装为正常结果或 Fail。
-- 不提交 API Key、个人信息、持仓或受限数据。请从 `.env.example` 复制为本地环境文件后配置。
-
-## 提交前需要补齐
-
-1. 在连接真实 MCP 后记录实际 Tool 名称、请求参数、响应字段和运行日志。
-2. 使用真实运行记录填写 AI 使用与验证记录，不能照抄或虚构。
-3. 运行 `tests/test-cases.md` 的全部用例，保存测试结果。
+- 不输出涨跌预测、收益承诺、股票排名或买卖建议；
+- AI 只提出意图和规则候选，不生成金融事实或决定 PASS/FAIL；
+- 用户确认前不执行最终策略；Patch 未确认前不改变已执行版本；
+- 异常和缺失不会被伪装成普通不满足；
+- 当前有限样本不会被描述成完整沪深 300 候选结果。

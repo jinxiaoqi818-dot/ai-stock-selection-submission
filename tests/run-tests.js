@@ -121,8 +121,11 @@ async function run() {
     assert.equal(response.status, 200);
     assert.ok(["VALID", "PARTIAL", "STALE"].includes(body.status));
     assert.equal(body.source, "fuyao");
+    assert.equal(body.mode, "SAMPLE_VALIDATION");
     assert.ok(body.request_id);
     assert.equal(body.universe_total, 300);
+    assert.equal(body.not_evaluated_count + body.evaluated_count, body.universe_total);
+    assert.ok(body.coverage_rate < 1, "current deployment must not claim full-universe coverage");
     assert.ok(Array.isArray(body.data));
     assert.ok(body.data.every((item) => item.request_ids && item.evidence));
   });

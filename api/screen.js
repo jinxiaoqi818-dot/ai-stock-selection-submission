@@ -204,18 +204,22 @@ async function handler(request, response) {
     const responseStatus = isStale ? "STALE" : ranked.length === 0 ? "ZERO_RESULT" : partialFailures ? "PARTIAL" : "VALID";
     return json(response, 200, {
       status: responseStatus,
+      mode: "SAMPLE_VALIDATION",
       source: "fuyao",
       index: INDEX_CODE,
       as_of: endMs,
       request_id: allRequestIds.valuations || allRequestIds.constituents,
       request_ids: allRequestIds,
       universe_total: universeTotal,
+      valuation_coverage_count: valuationStocks.length,
       evaluated_count: results.length,
+      not_evaluated_count: Math.max(universeTotal - results.length, 0),
+      coverage_rate: universeTotal ? results.length / universeTotal : 0,
       partial_failures: partialFailures,
       retry_count: (constituents.retries || 0) + (valuation.retries || 0) + results.reduce((sum, item) => sum + Object.values(item.retry_counts || {}).reduce((itemSum, value) => itemSum + value, 0), 0),
       evaluation_limit: EVALUATION_LIMIT,
       message: responseStatus === "ZERO_RESULT" ? "当前阈值下没有可评估标的。" : responseStatus === "PARTIAL" ? `${partialFailures} 只标的存在工具调用失败，结果已保留。` : responseStatus === "STALE" ? "数据时点超过 7 天，结果仅供核验且不判定 PASS/FAIL。" : "success",
-      selection_note: `仅对 PE-TTM < ${peLimit} 的前 ${EVALUATION_LIMIT} 只标的计算财务和波动率，未评估标的不代表 FAIL。`,
+      selection_note: `样本验证模式：仅查询前 ${valuationStocks.length} 只成分的估值，并对其中 PE-TTM < ${peLimit} 的前 ${EVALUATION_LIMIT} 只计算财务和波动率；其余 ${Math.max(universeTotal - results.length, 0)} 只为 NOT_EVALUATED，不代表 FAIL。`,
       data: results,
     });
   } catch (error) {

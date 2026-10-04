@@ -114,8 +114,9 @@ function renderResults() {
   $("growthCount").textContent = growthPass;
   $("valuationCount").textContent = valPassAfterGrowth;
   $("candidateCount").textContent = candidates;
+  $("evaluatedCount").textContent = apiMeta?.evaluated_count ?? securities.length;
   $("versionTag").textContent = `策略 v${version}`;
-  const metaText = apiMeta ? `真实数据：${apiMeta.evaluated_count}/${apiMeta.universe_total} 只已评估；状态 ${apiMeta.status}；${apiMeta.message || ""} ${apiMeta.selection_note || ""}` : "";
+  const metaText = apiMeta ? `真实数据样本验证：${apiMeta.evaluated_count}/${apiMeta.universe_total} 只深度评估，${apiMeta.not_evaluated_count ?? apiMeta.universe_total - apiMeta.evaluated_count} 只未评估；状态 ${apiMeta.status}；${apiMeta.message || ""} ${apiMeta.selection_note || ""}` : "";
   $("resultSubtitle").textContent = `已确认：利润 CAGR > ${(growthThreshold * 100).toFixed(0)}%，PE-TTM < ${threshold}x，60 日波动率 < ${(volatilityThreshold * 100).toFixed(0)}%。${metaText}`;
   const asOf = apiMeta?.as_of ? new Date(apiMeta.as_of).toLocaleString("zh-CN", { hour12: false }) : "未获取";
   const asOfTag = document.querySelector(".result-tags .tag:last-child");
@@ -225,6 +226,7 @@ async function confirm() {
     $("resultSubtitle").textContent = `无法完成真实数据筛选：${error.message}`;
     $("resultRows").innerHTML = `<tr><td colspan="7" class="helper">TOOL_ERROR：${error.message}。请检查 Vercel 的 FUYAO_API_KEY 和接口状态；系统没有将失败转换为正常筛选结果。</td></tr>`;
     $("growthCount").textContent = "-"; $("valuationCount").textContent = "-"; $("candidateCount").textContent = "-";
+    $("evaluatedCount").textContent = "-";
   }
 }
 function previewPatch() {

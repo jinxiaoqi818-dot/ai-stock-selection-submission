@@ -24,13 +24,13 @@
 | 合规与状态 | 1 | 通过 | 合规拒绝文案及 `TOOL_ERROR/STALE/CONFLICT/ZERO_RESULT/PARTIAL` 路径存在 |
 | Secrets 扫描 | 1 | 通过 | 扫描所有 Git 已跟踪文本文件，无已知凭据前缀 |
 | 生产健康检查 | 1 | 通过 | HTTP 200，扶摇 Secret 已配置 |
-| 生产真实数据链路 | 1 | 通过 | 来源为扶摇，沪深 300 总数 300，结果包含 Evidence 和 `request_id` |
+| 生产真实数据链路 | 1 | 通过 | 来源为扶摇；明确标记 `SAMPLE_VALIDATION`；已评估与未评估数量可对账；结果包含 Evidence 和 `request_id` |
 | 生产零结果 | 1 | 通过 | `pe_max=0.1` 返回 `ZERO_RESULT`，评估数为 0 |
 | 生产冲突 | 1 | 通过 | `pe_min=30&pe_max=20` 返回 HTTP 409 `CONFLICT` |
 
 ## 已验证结论
 
-- Demo 主链路已使用扶摇真实指数成分、估值、利润表和 K 线，不再使用构造股票。
+- Demo 主链路已使用扶摇真实指数成分、估值、利润表和 K 线，不再使用构造股票；当前是样本验证，不是完整沪深 300 候选结果。
 - `PASS/FAIL/UNKNOWN` 由确定性代码计算；异常不会静默变成正常结果。
 - 生产结果保留数据源、时点、字段映射和工具 `request_id`。
 - Git 已跟踪文件没有发现用户提供的扶摇 Key 或常见 GitHub Token 形态。

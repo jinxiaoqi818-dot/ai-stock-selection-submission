@@ -9,7 +9,7 @@
 <body>
   <header class="topbar">
     <div class="brand"><span class="brand-mark">S</span><span>Strategy Compiler</span></div>
-    <div class="top-meta"><span id="headerVersion" class="header-version">草稿</span><span class="demo-badge">真实数据接口</span><span>不构成投资建议</span></div>
+    <div class="top-meta"><span id="headerVersion" class="header-version">草稿</span><span class="demo-badge">真实数据 · 样本验证</span><span>不构成投资建议</span></div>
   </header>
 
   <main class="shell">
@@ -52,10 +52,10 @@
     <section id="resultsPanel" class="hidden" aria-labelledby="results-title">
       <div class="result-header">
         <div><p class="step">03</p><h2 id="results-title">策略匹配结果</h2><p id="resultSubtitle" class="helper" aria-live="polite"></p></div>
-        <div class="result-tags"><span id="versionTag" class="tag"></span><span class="tag">沪深 300</span><span class="tag">as of 2026-10-02</span></div>
+        <div class="result-tags"><span id="versionTag" class="tag"></span><span class="tag">沪深 300 样本</span><span class="tag">as of 2026-10-02</span></div>
       </div>
 
-      <div class="funnel" aria-label="筛选漏斗"><div><b>300</b><span>股票池</span></div><i></i><div><b id="growthCount">0</b><span>增长达标</span></div><i></i><div><b id="valuationCount">0</b><span>估值达标</span></div><i></i><div><b id="candidateCount">0</b><span>候选</span></div></div>
+      <div class="funnel" aria-label="样本筛选漏斗"><div><b id="evaluatedCount">0</b><span>深度评估样本</span></div><i></i><div><b id="growthCount">0</b><span>增长达标</span></div><i></i><div><b id="valuationCount">0</b><span>估值达标</span></div><i></i><div><b id="candidateCount">0</b><span>样本候选</span></div></div>
 
       <div class="results-tools"><p class="helper">展开证据核验每项结论；异常状态不会被计入正常 PASS/FAIL。</p><div class="status-legend"><span class="status pass">PASS</span><span class="status fail">FAIL</span><span class="status unknown">UNKNOWN</span><span class="status stale">STALE</span><span class="status tool-error">TOOL_ERROR</span></div></div>
       <div class="table-wrap"><table>

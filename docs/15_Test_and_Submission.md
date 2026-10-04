@@ -24,6 +24,8 @@
 
 本项目使用 OpenAI Codex 编码代理辅助分析、编码、部署和测试。用户负责确认交付顺序、GitHub/Vercel 账户授权、扶摇 API Key 创建以及各阶段是否继续。产品当前运行时没有调用外部 LLM；自然语言解析是可审计的确定性规则 MVP，不能描述为已经接入大模型。
 
+在完成首版实现后，候选人以 AI 产品经理视角进行了第二轮方案复盘，并最终审定以下三个核心产品判断：有限样本不能代表完整股票池候选；模糊投资意图不能被静默转换为固定阈值；一次性结果需要通过保存和重跑形成持续验证闭环。候选人据此将方案修订为“AI 投资假设编译与监控工作台”，并重新确定了 P0 优先级。Codex 在该环节用于辅助发现风险、挑战假设、整理方案和同步文档，最终判断、范围取舍与方案确认由候选人完成。
+
 | 阶段 | 使用的 AI 工具 | AI 参与内容 | 人工验证与修正 | 证据 |
 | --- | --- | --- | --- | --- |
 | 产品分析 | OpenAI Codex | 对原始题目和已有交付物做缺口检查，按真实数据、解析、异常、测试、记录和文档排列实施顺序 | 用户确认按阶段实施，并要求以必交付物为主、不伪造高强度量化验收 | `docs/10_PRD.md`、`docs/Business_Owner_Review_and_Revision.md` |
@@ -32,6 +34,7 @@
 | 工程实现 | OpenAI Codex | 编写 Vercel API、真实数据前端、最小 Patch、版本审计及异常状态 | 生产 502 后定位函数超时并缩小批次；发现极低 PE 返回负 PE 后修正为只接受正 PE | 提交 `b885815`、`b6b8b63`、`d40f515` |
 | 测试 | OpenAI Codex | 编写 12 项单元、安全与生产冒烟测试，生成 JSON 运行证据和 GitHub Actions | Node/curl 在本机网络失败后改用 PowerShell HTTP 客户端；最终本地和 CI 均通过 | `tests/TEST_REPORT.md`、`tests/results/latest.json`；提交 `ed0d370`；Actions run `37182707929` |
 | 合规检查 | OpenAI Codex | 添加预测/荐股拒绝、异常不得转为 PASS/FAIL、已跟踪文件 Secrets 扫描 | 未把未执行的 20 用户、50 次运行、100 条 Evidence 抽样写成已通过 | `tests/test-cases.md`、`tests/TEST_REPORT.md` |
+| 产品二次复盘 | OpenAI Codex 辅助审查 | 从产品承诺、策略语义和持续使用闭环三个角度挑战首版方案，并协助整理方案 B | 候选人审定三项问题，决定优先全量覆盖、阻断式澄清、保存与重跑，并明确当前实现只能称为策略样本验证 | `docs/Business_Owner_Review_and_Revision.md`、方案 B 版 `docs/10_PRD.md` 至 `docs/14_Engineering_Plan.md` |
 
 ### 2.1 关键人工判断和修正
 
@@ -40,6 +43,9 @@
 3. Codex 初始真实筛选请求超过 Vercel Hobby 运行时间，随后将估值批次限制为 30、深度评估限制为 3，并在响应和页面中公开该限制。
 4. 测试发现负 PE 会被极低上限选中，随后增加 `pe_ttm > 0` 校验，生产 `ZERO_RESULT` 路径验证通过。
 5. 产品运行时解析仍为规则引擎；在配置并验证真实 LLM 服务前，不宣称具备大模型语义泛化能力。
+6. 候选人复盘后否决了“有限样本也可作为正式沪深 300 候选”的隐含假设，要求正式结果覆盖率为 100%，否则必须显式切换为样本验证模式。
+7. 候选人将 10%、25x、30% 从默认执行规则降级为模板建议，方案 B 改为先选择代理指标，再确认用户明确值或股票池分位数。
+8. 候选人认为“研究入口”仍不足以形成复用价值，因此将保存策略和再次运行提升为 P0，将定期监控、iFinD 和回测后置。
 
 ### 2.2 已知 AI 边界
 
@@ -49,10 +55,10 @@
 
 ## 3. 最终提交清单
 
-- [x] 可访问且可实际操作的 Web 产品 URL：<https://jinxiaoqi818-dot.github.io/ai-stock-selection-submission/>
+- [x] 可访问且可实际操作的 Web 产品 URL：<https://ai-stock-selection-submission.vercel.app/demo/>
 - [x] 源码仓库与 README，包含启动方式、环境变量和已知限制：<https://github.com/jinxiaoqi818-dot/ai-stock-selection-submission>
-- [ ] 扶摇真实核心筛选调用的 Tool Contract 或运行日志
-- [ ] iFinD 实际调用记录，或明确其在 MVP 中为何降级
+- [x] 扶摇真实核心筛选调用的 Tool Contract 或运行日志：`tests/results/latest.json` 与生产 `/api/screen`
+- [x] iFinD 实际调用记录，或明确其在 MVP 中为何降级：方案 B 将其置于全量数据闭环、保存和重跑之后
 - [x] 主链路、异常、合规测试报告
 - [x] 真实的 AI 使用与验证记录
 - [ ] 60-180 秒演示视频（可选）
