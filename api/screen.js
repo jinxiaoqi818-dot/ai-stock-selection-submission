@@ -7,6 +7,12 @@ const DEFAULT_PE_LIMIT = 25;
 const GROWTH_LIMIT = 0.10;
 const VOLATILITY_LIMIT = 0.30;
 const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+let bundledSnapshot = null;
+try {
+  bundledSnapshot = require("../data/universe-snapshot.json");
+} catch (_) {
+  bundledSnapshot = null;
+}
 
 function json(response, status, body) {
   return response.status(status).json(body);
@@ -48,6 +54,61 @@ function getItems(payload) {
 
 function requestId(payload) {
   return payload?.request_id || null;
+}
+
+function screenBundledSnapshot(snapshot, thresholds) {
+  const { peLimit, growthLimit, volatilityLimit } = thresholds;
+  const data = snapshot.data.map((item) => {
+    const evidenceStates = Object.values(item.evidence || {}).map((entry) => entry.status);
+    const checks = {
+      growth: item.growth === null ? "UNKNOWN" : item.growth > growthLimit ? "PASS" : "FAIL",
+      valuation: item.pe === null || item.pe <= 0 ? "UNKNOWN" : item.pe < peLimit ? "PASS" : "FAIL",
+      stability: item.volatility === null ? "UNKNOWN" : item.volatility < volatilityLimit ? "PASS" : "FAIL",
+    };
+    if (evidenceStates.includes("TOOL_ERROR")) {
+      for (const key of Object.keys(checks)) if (item.evidence?.[key]?.status === "TOOL_ERROR") checks[key] = "TOOL_ERROR";
+    }
+    if (evidenceStates.includes("STALE")) {
+      for (const key of Object.keys(checks)) if (item.evidence?.[key]?.status === "STALE") checks[key] = "STALE";
+    }
+    const values = Object.values(checks);
+    const failCount = values.filter((state) => state === "FAIL").length;
+    const state = values.includes("TOOL_ERROR") ? "TOOL_ERROR"
+      : values.includes("STALE") ? "STALE"
+        : values.includes("UNKNOWN") ? "UNKNOWN"
+          : failCount === 0 ? "PASS" : "FAIL";
+    const category = state === "TOOL_ERROR" ? "TOOL_ERROR"
+      : state === "STALE" || state === "UNKNOWN" ? "DATA_GAP"
+        : failCount === 0 ? "CANDIDATE"
+          : failCount === 1 ? "NEAR_MISS" : "NOT_MATCHED";
+    return { ...item, checks, state, category };
+  });
+  const categoryCounts = data.reduce((counts, item) => {
+    counts[item.category] = (counts[item.category] || 0) + 1;
+    return counts;
+  }, {});
+  const topRequestId = snapshot.chunks?.[0]?.request_ids?.valuations || null;
+  const responseStatus = (categoryCounts.CANDIDATE || 0) === 0 ? "ZERO_RESULT" : "VALID";
+  return {
+    status: responseStatus,
+    mode: "FULL_SNAPSHOT",
+    source: snapshot.source,
+    index: snapshot.index,
+    snapshot_id: snapshot.snapshot_id,
+    generated_at: snapshot.generated_at,
+    as_of: Math.max(...data.map((item) => Date.parse(item.asOf) || 0)),
+    request_id: topRequestId,
+    universe_total: snapshot.universe_total,
+    valuation_coverage_count: snapshot.universe_total,
+    evaluated_count: data.length,
+    not_evaluated_count: Math.max(snapshot.universe_total - data.length, 0),
+    coverage_rate: snapshot.universe_total ? data.length / snapshot.universe_total : 0,
+    category_counts: categoryCounts,
+    thresholds: { growth_min: growthLimit, pe_max: peLimit, volatility_max: volatilityLimit },
+    message: responseStatus === "ZERO_RESULT" ? "完整股票池已评估，但当前阈值下没有候选标的。" : "Complete CSI 300 snapshot screened successfully.",
+    selection_note: `全量快照模式：${data.length}/${snapshot.universe_total} 只已评估；候选 ${categoryCounts.CANDIDATE || 0} 只，临界未入选 ${categoryCounts.NEAR_MISS || 0} 只，数据缺口 ${categoryCounts.DATA_GAP || 0} 只。`,
+    data,
+  };
 }
 
 function calculateGrowth(items) {
@@ -159,8 +220,6 @@ async function evaluateStock(stock, valuation, apiKey, endMs, peLimit, isStale) 
 
 async function handler(request, response) {
   response.setHeader("Cache-Control", "no-store");
-  const apiKey = process.env.FUYAO_API_KEY;
-  if (!apiKey) return json(response, 503, { status: "TOOL_ERROR", message: "FUYAO_API_KEY is not configured." });
   try {
     const rawPe = request.query?.pe_max;
     const requestedPe = Number(request.query?.pe_max);
@@ -168,10 +227,19 @@ async function handler(request, response) {
       return json(response, 400, { status: "INVALID", message: "pe_max must be greater than 0 and no more than 200." });
     }
     const peLimit = Number.isFinite(requestedPe) && requestedPe > 0 && requestedPe <= 200 ? requestedPe : DEFAULT_PE_LIMIT;
+    const requestedGrowth = Number(request.query?.growth_min);
+    const growthLimit = Number.isFinite(requestedGrowth) && requestedGrowth >= -1 && requestedGrowth <= 10 ? requestedGrowth : GROWTH_LIMIT;
+    const requestedVolatility = Number(request.query?.volatility_max);
+    const volatilityLimit = Number.isFinite(requestedVolatility) && requestedVolatility > 0 && requestedVolatility <= 10 ? requestedVolatility : VOLATILITY_LIMIT;
     const requestedMin = Number(request.query?.pe_min);
     if (Number.isFinite(requestedMin) && requestedMin >= peLimit) {
       return json(response, 409, { status: "CONFLICT", message: `PE lower bound ${requestedMin} must be below upper bound ${peLimit}.` });
     }
+    if (bundledSnapshot?.status === "COMPLETE" && bundledSnapshot.evaluated_count === bundledSnapshot.universe_total) {
+      return json(response, 200, screenBundledSnapshot(bundledSnapshot, { peLimit, growthLimit, volatilityLimit }));
+    }
+    const apiKey = process.env.FUYAO_API_KEY;
+    if (!apiKey) return json(response, 503, { status: "TOOL_ERROR", message: "FUYAO_API_KEY is not configured." });
     const constituents = await fuyao(`/api/a-share-index/constituents/ths-stock-list?thscode=${INDEX_CODE}`, apiKey);
     if (!constituents.ok) {
       return json(response, 502, { status: "TOOL_ERROR", source: "fuyao", request_id: requestId(constituents.payload), message: constituents.payload?.message || "Unable to load index constituents." });
@@ -228,4 +296,5 @@ async function handler(request, response) {
 }
 
 handler._test = { calculateGrowth, calculateVolatility, number };
+handler._internal = { fuyao, getItems, requestId, number, evaluateStock };
 module.exports = handler;

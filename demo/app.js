@@ -116,7 +116,8 @@ function renderResults() {
   $("candidateCount").textContent = candidates;
   $("evaluatedCount").textContent = apiMeta?.evaluated_count ?? securities.length;
   $("versionTag").textContent = `策略 v${version}`;
-  const metaText = apiMeta ? `真实数据样本验证：${apiMeta.evaluated_count}/${apiMeta.universe_total} 只深度评估，${apiMeta.not_evaluated_count ?? apiMeta.universe_total - apiMeta.evaluated_count} 只未评估；状态 ${apiMeta.status}；${apiMeta.message || ""} ${apiMeta.selection_note || ""}` : "";
+  const fullCoverage = apiMeta?.mode === "FULL_SNAPSHOT" && apiMeta.coverage_rate === 1;
+  const metaText = apiMeta ? `${fullCoverage ? "真实数据全量快照" : "真实数据样本验证"}：${apiMeta.evaluated_count}/${apiMeta.universe_total} 只已评估，覆盖率 ${((apiMeta.coverage_rate || 0) * 100).toFixed(1)}%；状态 ${apiMeta.status}；${apiMeta.selection_note || apiMeta.message || ""}` : "";
   $("resultSubtitle").textContent = `已确认：利润 CAGR > ${(growthThreshold * 100).toFixed(0)}%，PE-TTM < ${threshold}x，60 日波动率 < ${(volatilityThreshold * 100).toFixed(0)}%。${metaText}`;
   const asOf = apiMeta?.as_of ? new Date(apiMeta.as_of).toLocaleString("zh-CN", { hour12: false }) : "未获取";
   const asOfTag = document.querySelector(".result-tags .tag:last-child");
@@ -211,11 +212,20 @@ async function confirm() {
   $("resultRows").innerHTML = `<tr><td colspan="7" class="helper">正在获取沪深 300 成分、估值、财务和历史 K 线，请稍候...</td></tr>`;
   $("resultsPanel").scrollIntoView({ behavior: "smooth", block: "start" });
   try {
-    const response = await fetch(`/api/screen?pe_max=${encodeURIComponent(threshold)}`);
+    const query = new URLSearchParams({
+      pe_max: String(threshold),
+      growth_min: String(growthThreshold),
+      volatility_max: String(volatilityThreshold),
+    });
+    const response = await fetch(`/api/screen?${query}`);
     const payload = await response.json();
     if (!response.ok || payload.status === "TOOL_ERROR") throw new Error(payload.message || "真实数据接口调用失败");
     securities = Array.isArray(payload.data) ? payload.data : [];
     apiMeta = payload;
+    const fullCoverage = payload.mode === "FULL_SNAPSHOT" && payload.coverage_rate === 1;
+    $("dataModeBadge").textContent = fullCoverage ? "真实数据 · 全量快照" : "真实数据 · 样本验证";
+    $("universeTag").textContent = fullCoverage ? "沪深 300 全量" : "沪深 300 样本";
+    $("evaluatedLabel").textContent = fullCoverage ? "完整评估" : "深度评估样本";
     strategyState.status = "RESULT_READY";
     strategyState.audit.push({ event: "RESULT_READY", at: new Date().toISOString(), request_id: payload.request_id, as_of: payload.as_of });
     const abnormal = ["STALE", "PARTIAL", "ZERO_RESULT"].includes(payload.status);

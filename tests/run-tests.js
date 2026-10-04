@@ -121,11 +121,13 @@ async function run() {
     assert.equal(response.status, 200);
     assert.ok(["VALID", "PARTIAL", "STALE"].includes(body.status));
     assert.equal(body.source, "fuyao");
-    assert.equal(body.mode, "SAMPLE_VALIDATION");
+    assert.equal(body.mode, "FULL_SNAPSHOT");
     assert.ok(body.request_id);
     assert.equal(body.universe_total, 300);
     assert.equal(body.not_evaluated_count + body.evaluated_count, body.universe_total);
-    assert.ok(body.coverage_rate < 1, "current deployment must not claim full-universe coverage");
+    assert.equal(body.coverage_rate, 1);
+    assert.equal(body.not_evaluated_count, 0);
+    assert.equal(Object.values(body.category_counts).reduce((sum, value) => sum + value, 0), body.universe_total);
     assert.ok(Array.isArray(body.data));
     assert.ok(body.data.every((item) => item.request_ids && item.evidence));
   });
@@ -134,7 +136,8 @@ async function run() {
     const { response, body } = await getJson(`${PROD}/api/screen?pe_max=0.1`);
     assert.equal(response.status, 200);
     assert.equal(body.status, "ZERO_RESULT");
-    assert.equal(body.evaluated_count, 0);
+    assert.equal(body.evaluated_count, body.universe_total);
+    assert.equal(body.category_counts.CANDIDATE || 0, 0);
   });
 
   await test("Production conflict path rejects execution", async () => {
