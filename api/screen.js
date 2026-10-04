@@ -6,24 +6,34 @@ const EVALUATION_LIMIT = 3;
 const DEFAULT_PE_LIMIT = 25;
 const GROWTH_LIMIT = 0.10;
 const VOLATILITY_LIMIT = 0.30;
+const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
 function json(response, status, body) {
   return response.status(status).json(body);
 }
 
-async function fuyao(path, apiKey, timeoutMs = 7000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const upstream = await fetch(`${FUYAO_BASE_URL}${path}`, {
-      headers: { "X-api-key": apiKey },
-      signal: controller.signal,
-    });
-    const payload = await upstream.json();
-    return { ok: upstream.ok && (payload.code === 0 || payload.code === 200), payload };
-  } finally {
-    clearTimeout(timer);
+async function fuyao(path, apiKey, timeoutMs = 4500) {
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const upstream = await fetch(`${FUYAO_BASE_URL}${path}`, {
+        headers: { "X-api-key": apiKey },
+        signal: controller.signal,
+      });
+      const payload = await upstream.json();
+      const ok = upstream.ok && (payload.code === 0 || payload.code === 200);
+      const retryable = upstream.status === 429 || upstream.status >= 500;
+      if (ok || !retryable || attempt === 1) return { ok, payload, retries: attempt };
+    } catch (error) {
+      lastError = error;
+      if (attempt === 1) throw error;
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  throw lastError || new Error("Fuyao request failed.");
 }
 
 function number(value) {
@@ -68,9 +78,10 @@ function calculateVolatility(items) {
   return { value: Math.sqrt(variance) * Math.sqrt(252), status: "VALID", reason: "最近 60 个交易日对数收益率年化" };
 }
 
-async function evaluateStock(stock, valuation, apiKey, endMs, peLimit) {
+async function evaluateStock(stock, valuation, apiKey, endMs, peLimit, isStale) {
   const code = stock.thscode;
   const requestIds = { valuation: requestId(valuation.__payload) };
+  const retryCounts = { valuation: valuation.__retries || 0 };
   const pe = number(valuation.pe_ttm);
   const peResult = pe === null
     ? { value: null, status: "UNKNOWN", reason: "PE-TTM 缺失" }
@@ -85,16 +96,20 @@ async function evaluateStock(stock, valuation, apiKey, endMs, peLimit) {
   if (financialResult.status === "fulfilled" && financialResult.value.ok) {
     growth = calculateGrowth(getItems(financialResult.value.payload));
     requestIds.financials = requestId(financialResult.value.payload);
+    retryCounts.financials = financialResult.value.retries || 0;
   } else if (financialResult.status === "fulfilled") {
     growth.reason = financialResult.value.payload?.message || growth.reason;
     requestIds.financials = requestId(financialResult.value.payload);
+    retryCounts.financials = financialResult.value.retries || 0;
   }
   if (priceResult.status === "fulfilled" && priceResult.value.ok) {
     volatility = calculateVolatility(getItems(priceResult.value.payload));
     requestIds.prices = requestId(priceResult.value.payload);
+    retryCounts.prices = priceResult.value.retries || 0;
   } else if (priceResult.status === "fulfilled") {
     volatility.reason = priceResult.value.payload?.message || volatility.reason;
     requestIds.prices = requestId(priceResult.value.payload);
+    retryCounts.prices = priceResult.value.retries || 0;
   }
   const metrics = { growth, pe: peResult, volatility };
   const states = Object.values(metrics).map((metric) => {
@@ -103,13 +118,21 @@ async function evaluateStock(stock, valuation, apiKey, endMs, peLimit) {
     return "VALID";
   });
   const overall = states.includes("TOOL_ERROR") ? "TOOL_ERROR" : states.includes("UNKNOWN") ? "UNKNOWN" : "VALID";
+  const metricCheck = (metric, pass) => {
+    if (metric.status === "TOOL_ERROR") return "TOOL_ERROR";
+    if (metric.value === null) return "UNKNOWN";
+    if (isStale) return "STALE";
+    return pass ? "PASS" : "FAIL";
+  };
   const checks = {
-    growth: growth.value === null ? "UNKNOWN" : growth.value > GROWTH_LIMIT ? "PASS" : "FAIL",
-    valuation: pe === null ? "UNKNOWN" : pe < peLimit ? "PASS" : "FAIL",
-    stability: volatility.value === null ? "UNKNOWN" : volatility.value < VOLATILITY_LIMIT ? "PASS" : "FAIL",
+    growth: metricCheck(growth, growth.value > GROWTH_LIMIT),
+    valuation: metricCheck(peResult, pe < peLimit),
+    stability: metricCheck(volatility, volatility.value < VOLATILITY_LIMIT),
   };
   const overallCheck = Object.values(checks).includes("TOOL_ERROR")
     ? "TOOL_ERROR"
+    : Object.values(checks).includes("STALE")
+      ? "STALE"
     : Object.values(checks).includes("UNKNOWN") || overall === "TOOL_ERROR"
       ? overall
       : Object.values(checks).every((state) => state === "PASS") ? "PASS" : "FAIL";
@@ -124,10 +147,11 @@ async function evaluateStock(stock, valuation, apiKey, endMs, peLimit) {
     source: "fuyao",
     asOf: new Date(endMs).toISOString(),
     request_ids: requestIds,
+    retry_counts: retryCounts,
     evidence: {
-      growth: { value: growth.value, status: growth.status, reason: growth.reason, period: "2Y", unit: "ratio", field: "parent_holder_net_profit" },
-      valuation: { value: pe, status: peResult.status, reason: peResult.reason, period: "TTM", unit: "multiple", field: "pe_ttm" },
-      stability: { value: volatility.value, status: volatility.status, reason: volatility.reason, period: "60TD", unit: "ratio", field: "close_price" },
+      growth: { value: growth.value, status: isStale && growth.status === "VALID" ? "STALE" : growth.status, reason: growth.reason, period: "2Y", unit: "ratio", field: "parent_holder_net_profit" },
+      valuation: { value: pe, status: isStale && peResult.status === "VALID" ? "STALE" : peResult.status, reason: peResult.reason, period: "TTM", unit: "multiple", field: "pe_ttm" },
+      stability: { value: volatility.value, status: isStale && volatility.status === "VALID" ? "STALE" : volatility.status, reason: volatility.reason, period: "60TD", unit: "ratio", field: "close_price" },
     },
   };
 }
@@ -137,8 +161,16 @@ module.exports = async (request, response) => {
   const apiKey = process.env.FUYAO_API_KEY;
   if (!apiKey) return json(response, 503, { status: "TOOL_ERROR", message: "FUYAO_API_KEY is not configured." });
   try {
+    const rawPe = request.query?.pe_max;
     const requestedPe = Number(request.query?.pe_max);
+    if (rawPe !== undefined && (!Number.isFinite(requestedPe) || requestedPe <= 0 || requestedPe > 200)) {
+      return json(response, 400, { status: "INVALID", message: "pe_max must be greater than 0 and no more than 200." });
+    }
     const peLimit = Number.isFinite(requestedPe) && requestedPe > 0 && requestedPe <= 200 ? requestedPe : DEFAULT_PE_LIMIT;
+    const requestedMin = Number(request.query?.pe_min);
+    if (Number.isFinite(requestedMin) && requestedMin >= peLimit) {
+      return json(response, 409, { status: "CONFLICT", message: `PE lower bound ${requestedMin} must be below upper bound ${peLimit}.` });
+    }
     const constituents = await fuyao(`/api/a-share-index/constituents/ths-stock-list?thscode=${INDEX_CODE}`, apiKey);
     if (!constituents.ok) {
       return json(response, 502, { status: "TOOL_ERROR", source: "fuyao", request_id: requestId(constituents.payload), message: constituents.payload?.message || "Unable to load index constituents." });
@@ -158,13 +190,16 @@ module.exports = async (request, response) => {
       .filter((item) => item.valuation && number(item.valuation.pe_ttm) !== null && number(item.valuation.pe_ttm) < peLimit)
       .slice(0, EVALUATION_LIMIT);
     const endMs = number(valuation.payload?.data?.timestamp) || Date.now();
-    const results = await Promise.all(ranked.map((item) => evaluateStock(item.stock, { ...item.valuation, __payload: valuation.payload }, apiKey, endMs, peLimit)));
+    const isStale = Date.now() - endMs > STALE_AFTER_MS;
+    const results = await Promise.all(ranked.map((item) => evaluateStock(item.stock, { ...item.valuation, __payload: valuation.payload, __retries: valuation.retries }, apiKey, endMs, peLimit, isStale)));
     const allRequestIds = {
       constituents: requestId(constituents.payload),
       valuations: requestId(valuation.payload),
     };
+    const partialFailures = results.filter((item) => item.state === "TOOL_ERROR").length;
+    const responseStatus = isStale ? "STALE" : ranked.length === 0 ? "ZERO_RESULT" : partialFailures ? "PARTIAL" : "VALID";
     return json(response, 200, {
-      status: "VALID",
+      status: responseStatus,
       source: "fuyao",
       index: INDEX_CODE,
       as_of: endMs,
@@ -172,7 +207,10 @@ module.exports = async (request, response) => {
       request_ids: allRequestIds,
       universe_total: universeTotal,
       evaluated_count: results.length,
+      partial_failures: partialFailures,
+      retry_count: (constituents.retries || 0) + (valuation.retries || 0) + results.reduce((sum, item) => sum + Object.values(item.retry_counts || {}).reduce((itemSum, value) => itemSum + value, 0), 0),
       evaluation_limit: EVALUATION_LIMIT,
+      message: responseStatus === "ZERO_RESULT" ? "当前阈值下没有可评估标的。" : responseStatus === "PARTIAL" ? `${partialFailures} 只标的存在工具调用失败，结果已保留。` : responseStatus === "STALE" ? "数据时点超过 7 天，结果仅供核验且不判定 PASS/FAIL。" : "success",
       selection_note: `仅对 PE-TTM < ${peLimit} 的前 ${EVALUATION_LIMIT} 只标的计算财务和波动率，未评估标的不代表 FAIL。`,
       data: results,
     });

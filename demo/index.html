@@ -57,7 +57,7 @@
 
       <div class="funnel" aria-label="筛选漏斗"><div><b>300</b><span>股票池</span></div><i></i><div><b id="growthCount">0</b><span>增长达标</span></div><i></i><div><b id="valuationCount">0</b><span>估值达标</span></div><i></i><div><b id="candidateCount">0</b><span>候选</span></div></div>
 
-      <div class="results-tools"><p class="helper">展开证据核验每项结论；勾选两到三只标的，进入事实对比。</p><div class="status-legend"><span class="status pass">PASS</span><span class="status fail">FAIL</span><span class="status unknown">UNKNOWN</span></div></div>
+      <div class="results-tools"><p class="helper">展开证据核验每项结论；异常状态不会被计入正常 PASS/FAIL。</p><div class="status-legend"><span class="status pass">PASS</span><span class="status fail">FAIL</span><span class="status unknown">UNKNOWN</span><span class="status stale">STALE</span><span class="status tool-error">TOOL_ERROR</span></div></div>
       <div class="table-wrap"><table>
         <thead><tr><th>标的</th><th>利润增长</th><th>PE-TTM</th><th>60 日波动率</th><th>匹配结果</th><th>对比</th><th><span class="sr-only">操作</span></th></tr></thead>
         <tbody id="resultRows"></tbody>

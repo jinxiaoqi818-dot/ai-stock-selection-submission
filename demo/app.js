@@ -39,13 +39,17 @@ function parseIntent(text) {
   growthThreshold = growthMatch ? Number(growthMatch[1]) / 100 : 0.10;
   if (!growthMatch && /利润|增长|增速|CAGR/.test(normalized)) ambiguities.push("“增长较快”未给出阈值，暂以 10% 作为建议值，确认前请核对。");
   const peMatch = normalized.match(/PE(?:-TTM)?(?:不超过|小于|低于|少于|<|不高于|改成)?(\d+(?:\.\d+)?)/i);
+  const peMin = normalized.match(/PE.*?(?:大于|高于|>)(\d+(?:\.\d+)?)/i);
+  const peMax = normalized.match(/PE.*?(?:小于|低于|不超过|<)(\d+(?:\.\d+)?)/i);
+  const conflict = Boolean(peMin && peMax && Number(peMin[1]) >= Number(peMax[1]));
+  if (conflict) ambiguities.push(`PE 下限 ${peMin[1]}x 不小于上限 ${peMax[1]}x，条件冲突。`);
   threshold = peMatch ? Number(peMatch[1]) : 25;
   if (!peMatch && /PE|估值|便宜|合理|不要太高/.test(normalized)) ambiguities.push("PE 条件未给出明确上限，暂以 25x 作为建议值，确认前请核对。");
   const volMatch = normalized.match(/(?:波动率|波动)(?:小于|低于|不超过|<)?(\d+(?:\.\d+)?)%/i);
   volatilityThreshold = volMatch ? Number(volMatch[1]) / 100 : 0.30;
   if (!volMatch && /稳定|波动/.test(normalized)) ambiguities.push("“走势稳定”已映射为 60 日年化波动率，但未给出阈值，暂以 30% 作为建议值。");
   if (!hasUniverse) ambiguities.push("请确认股票池后再执行。");
-  return { ambiguities: [...ambiguities, ...unsupported], unsupported: unsupported.length > 0 };
+  return { ambiguities: [...ambiguities, ...unsupported], unsupported: unsupported.length > 0, conflict };
 }
 
 function syncConditions() {
@@ -71,7 +75,7 @@ function resultFor(security, condition) {
   const key = condition.id === "growth" ? "growth" : condition.id === "valuation" ? "pe" : "volatility";
   const value = security[key];
   const checkKey = condition.id === "valuation" ? "valuation" : condition.id === "stability" ? "stability" : "growth";
-  if (security.checks && security.checks[checkKey] === "TOOL_ERROR") return { state: "TOOL_ERROR", value, reason: "真实数据工具调用失败" };
+  if (security.checks && ["TOOL_ERROR", "STALE", "CONFLICT"].includes(security.checks[checkKey])) return { state: security.checks[checkKey], value, reason: security.checks[checkKey] === "STALE" ? "数据超过有效时效" : security.checks[checkKey] === "CONFLICT" ? "策略版本冲突" : "真实数据工具调用失败" };
   if (value === null || value === undefined) return { state: "UNKNOWN", value, reason: "该指标数据缺失，无法判断" };
   const target = typeof condition.value === "function" ? condition.value() : condition.value;
   const pass = condition.operator === ">" ? value > target : value < target;
@@ -80,10 +84,12 @@ function resultFor(security, condition) {
 function overall(security) {
   const states = conditions.map((condition) => resultFor(security, condition).state);
   if (states.includes("TOOL_ERROR")) return "TOOL_ERROR";
+  if (states.includes("CONFLICT")) return "CONFLICT";
+  if (states.includes("STALE")) return "STALE";
   return states.includes("UNKNOWN") ? "UNKNOWN" : states.every((state) => state === "PASS") ? "PASS" : "FAIL";
 }
-function statusClass(state) { return state === "PASS" ? "pass" : state === "FAIL" ? "fail" : state === "TOOL_ERROR" ? "fail" : "unknown"; }
-function statusText(state) { return state === "PASS" ? "符合" : state === "FAIL" ? "不符合" : state === "TOOL_ERROR" ? "工具错误" : "未知"; }
+function statusClass(state) { return state === "PASS" ? "pass" : state === "STALE" ? "stale" : state === "TOOL_ERROR" ? "tool-error" : state === "FAIL" || state === "CONFLICT" ? "fail" : "unknown"; }
+function statusText(state) { return state === "PASS" ? "符合" : state === "FAIL" ? "不符合" : state === "TOOL_ERROR" ? "工具错误" : state === "STALE" ? "已过期" : state === "CONFLICT" ? "版本冲突" : "未知"; }
 function renderConditions() {
   $("conditionList").innerHTML = conditions.map((condition, i) => {
     const target = typeof condition.value === "function" ? condition.value() : condition.value;
@@ -91,6 +97,9 @@ function renderConditions() {
   }).join("");
 }
 function renderResults() {
+  if (!securities.length) {
+    $("resultRows").innerHTML = `<tr><td colspan="7" class="empty-state">ZERO_RESULT：当前阈值下没有可展示标的。请调整条件后重新执行；零结果不等于工具失败。</td></tr>`;
+  }
   const rows = securities.map((security) => {
     const outcomes = conditions.map((condition) => resultFor(security, condition));
     const state = overall(security);
@@ -98,7 +107,7 @@ function renderResults() {
     const disabled = comparedCodes.size >= 3 && !selected ? "disabled" : "";
     return `<tr><td class="security">${security.name}<span>${security.code}</span></td>${outcomes.map((outcome, index) => `<td><span class="status ${statusClass(outcome.state)}">${outcome.state}</span><span class="mini">${outcome.value === null ? "数据缺失" : conditionValue(outcome, conditions[index])}</span></td>`).join("")}<td><span class="status ${statusClass(state)}">${statusText(state)}</span></td><td><label class="compare-choice"><input class="compare-input" type="checkbox" data-code="${security.code}" ${selected ? "checked" : ""} ${disabled} /><span>加入对比</span></label></td><td><button class="evidence-button" data-code="${security.code}" type="button">查看证据</button></td></tr>`;
   }).join("");
-  $("resultRows").innerHTML = rows;
+  if (rows) $("resultRows").innerHTML = rows;
   const growthPass = securities.filter(s => resultFor(s, conditions[0]).state === "PASS").length;
   const valPassAfterGrowth = securities.filter(s => resultFor(s, conditions[0]).state === "PASS" && resultFor(s, conditions[1]).state === "PASS").length;
   const candidates = securities.filter(s => overall(s) === "PASS").length;
@@ -106,7 +115,7 @@ function renderResults() {
   $("valuationCount").textContent = valPassAfterGrowth;
   $("candidateCount").textContent = candidates;
   $("versionTag").textContent = `策略 v${version}`;
-  const metaText = apiMeta ? `真实数据：${apiMeta.evaluated_count}/${apiMeta.universe_total} 只已评估；${apiMeta.selection_note || ""}` : "";
+  const metaText = apiMeta ? `真实数据：${apiMeta.evaluated_count}/${apiMeta.universe_total} 只已评估；状态 ${apiMeta.status}；${apiMeta.message || ""} ${apiMeta.selection_note || ""}` : "";
   $("resultSubtitle").textContent = `已确认：利润 CAGR > ${(growthThreshold * 100).toFixed(0)}%，PE-TTM < ${threshold}x，60 日波动率 < ${(volatilityThreshold * 100).toFixed(0)}%。${metaText}`;
   const asOf = apiMeta?.as_of ? new Date(apiMeta.as_of).toLocaleString("zh-CN", { hour12: false }) : "未获取";
   const asOfTag = document.querySelector(".result-tags .tag:last-child");
@@ -158,7 +167,8 @@ function openEvidence(code, trigger) {
     const evidence = security.evidence?.[evidenceKey];
     const requestKey = condition.id === "valuation" ? "valuation" : condition.id === "stability" ? "prices" : "financials";
     const requestId = security.request_ids?.[requestKey] || "未返回";
-    return `<section class="evidence-item"><h3>${condition.name} · <span class="status ${statusClass(outcome.state)}">${outcome.state}</span></h3><p class="evidence-rule">${rule}</p><div class="evidence-grid"><div><span>原始值</span><b>${display}</b></div><div><span>统计口径</span><b>${evidence?.period || condition.period}</b></div><div><span>数据来源</span><b>${security.source}</b></div><div><span>数据时点</span><b>${security.asOf}</b></div><div><span>字段映射</span><b>${evidence?.field || "未返回"}</b></div><div><span>request_id</span><b>${requestId}</b></div></div></section>`;
+    const retries = security.retry_counts?.[requestKey] || 0;
+    return `<section class="evidence-item"><h3>${condition.name} · <span class="status ${statusClass(outcome.state)}">${outcome.state}</span></h3><p class="evidence-rule">${rule}</p><div class="evidence-grid"><div><span>原始值</span><b>${display}</b></div><div><span>统计口径</span><b>${evidence?.period || condition.period}</b></div><div><span>数据来源</span><b>${security.source}</b></div><div><span>数据时点</span><b>${security.asOf}</b></div><div><span>字段映射</span><b>${evidence?.field || "未返回"}</b></div><div><span>request_id / 重试</span><b>${requestId} / ${retries}</b></div></div></section>`;
   }).join("") + `<p class="boundary">证据来自扶摇真实接口；指数、估值、财务和行情均保留字段映射与 request_id。${apiMeta?.selection_note || ""}</p>`;
   $("evidenceDrawer").classList.remove("hidden"); $("backdrop").classList.remove("hidden");
 }
@@ -171,16 +181,20 @@ function parse() {
   syncConditions();
   strategyState = createStrategyState(text);
   strategyState.ambiguities = parsed.ambiguities;
-  strategyState.status = parsed.unsupported ? "UNSUPPORTED" : parsed.ambiguities.length ? "NEEDS_CLARIFICATION" : "READY_TO_CONFIRM";
+  strategyState.status = parsed.conflict ? "CONFLICT" : parsed.unsupported ? "UNSUPPORTED" : parsed.ambiguities.length ? "NEEDS_CLARIFICATION" : "READY_TO_CONFIRM";
   strategyState.audit.push({ event: strategyState.status, at: new Date().toISOString(), ambiguities: parsed.ambiguities });
   renderConditions(); $("clarificationPanel").classList.remove("hidden");
-  $("strategyStatus").textContent = strategyState.status === "UNSUPPORTED" ? "不支持" : strategyState.status === "NEEDS_CLARIFICATION" ? "待澄清" : "待确认";
-  $("strategyStatus").className = `status ${strategyState.status === "UNSUPPORTED" ? "fail" : "warning"}`;
+  $("strategyStatus").textContent = strategyState.status === "CONFLICT" ? "条件冲突" : strategyState.status === "UNSUPPORTED" ? "不支持" : strategyState.status === "NEEDS_CLARIFICATION" ? "待澄清" : "待确认";
+  $("strategyStatus").className = `status ${["UNSUPPORTED", "CONFLICT"].includes(strategyState.status) ? "fail" : "warning"}`;
   const note = parsed.ambiguities.length ? `已结构化解析。执行前请确认：${parsed.ambiguities.join("；")}` : "已结构化解析股票池和三项条件，建议阈值仍需由你确认。";
   $("inputMessage").textContent = note;
   setWorkflow(2); setHeaderVersion("草稿待确认"); $("clarificationPanel").scrollIntoView({ behavior: "smooth", block: "start" }); $("confirmButton").focus();
 }
 async function confirm() {
+  if (strategyState?.status === "CONFLICT") {
+    $("inputMessage").textContent = "CONFLICT：策略条件互相矛盾，已阻止执行。请修改冲突阈值后重新构建策略。";
+    return;
+  }
   if (strategyState?.status === "UNSUPPORTED") {
     $("inputMessage").textContent = "当前策略包含未支持的指标，已阻止执行。请删除未支持条件后重新构建策略。";
     return;
@@ -203,12 +217,13 @@ async function confirm() {
     apiMeta = payload;
     strategyState.status = "RESULT_READY";
     strategyState.audit.push({ event: "RESULT_READY", at: new Date().toISOString(), request_id: payload.request_id, as_of: payload.as_of });
-    $("strategyStatus").textContent = "已执行"; $("strategyStatus").className = "status pass"; setHeaderVersion(`策略 v${version}`); renderResults();
+    const abnormal = ["STALE", "PARTIAL", "ZERO_RESULT"].includes(payload.status);
+    $("strategyStatus").textContent = abnormal ? payload.status : "已执行"; $("strategyStatus").className = `status ${abnormal ? "warning" : "pass"}`; setHeaderVersion(`策略 v${version}`); renderResults();
   } catch (error) {
     securities = []; apiMeta = null;
     $("strategyStatus").textContent = "工具错误"; $("strategyStatus").className = "status fail"; setHeaderVersion("真实数据获取失败");
     $("resultSubtitle").textContent = `无法完成真实数据筛选：${error.message}`;
-    $("resultRows").innerHTML = `<tr><td colspan="7" class="helper">TOOL_ERROR：${error.message}。请检查 Vercel 的 FUYAO_API_KEY 和接口状态。</td></tr>`;
+    $("resultRows").innerHTML = `<tr><td colspan="7" class="helper">TOOL_ERROR：${error.message}。请检查 Vercel 的 FUYAO_API_KEY 和接口状态；系统没有将失败转换为正常筛选结果。</td></tr>`;
     $("growthCount").textContent = "-"; $("valuationCount").textContent = "-"; $("candidateCount").textContent = "-";
   }
 }
@@ -228,6 +243,11 @@ function previewPatch() {
   $("patchPreview").classList.remove("hidden");
   setWorkflow(4);
   $("applyPatch").addEventListener("click", () => {
+    if (strategyState && strategyState.version !== audit.base_version) {
+      strategyState.status = "CONFLICT";
+      $("patchPreview").innerHTML = `<p><b>CONFLICT</b>：当前策略已从 v${audit.base_version} 变更为 v${strategyState.version}，请重新生成 Patch。</p>`;
+      return;
+    }
     if (patch.field === "valuation") threshold = patch.newValue;
     if (patch.field === "growth") growthThreshold = patch.newValue / 100;
     if (patch.field === "stability") volatilityThreshold = patch.newValue / 100;
