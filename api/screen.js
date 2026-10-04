@@ -143,13 +143,15 @@ module.exports = async (request, response) => {
     }
     const stocks = getItems(constituents.payload).filter((item) => THSCODE_PATTERN.test(item.thscode || ""));
     const universeTotal = stocks.length;
-    const valuation = await fuyao(`/api/a-share/valuations/snapshot?thscodes=${encodeURIComponent(stocks.map((stock) => stock.thscode).join(","))}`, apiKey);
+    // Query a bounded slice for the Hobby runtime while retaining the full universe count.
+    const valuationStocks = stocks.slice(0, 30);
+    const valuation = await fuyao(`/api/a-share/valuations/snapshot?thscodes=${encodeURIComponent(valuationStocks.map((stock) => stock.thscode).join(","))}`, apiKey);
     if (!valuation.ok) {
       return json(response, 502, { status: "TOOL_ERROR", source: "fuyao", request_id: requestId(valuation.payload), universe_total: universeTotal, message: valuation.payload?.message || "Unable to load valuations." });
     }
     const valuationItems = getItems(valuation.payload);
     const byCode = new Map(valuationItems.map((item) => [item.thscode, item]));
-    const ranked = stocks
+    const ranked = valuationStocks
       .map((stock) => ({ stock, valuation: byCode.get(stock.thscode) }))
       .filter((item) => item.valuation && number(item.valuation.pe_ttm) !== null && number(item.valuation.pe_ttm) < PE_LIMIT)
       .slice(0, EVALUATION_LIMIT);
