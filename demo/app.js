@@ -8,6 +8,8 @@ const comparedCodes = new Set();
 let lastEvidenceTrigger = null;
 let securities = [];
 let apiMeta = null;
+let pageSize = 30;
+let currentPage = 1;
 let savedStrategy = null;
 let executions = [];
 const STORAGE_KEY = "strategy-compiler.saved.v1";
@@ -35,22 +37,25 @@ function parseIntent(text) {
   const ambiguities = [];
   const unsupported = [];
   const normalized = text.replace(/\s+/g, "");
-  const hasUniverse = /沪深?300|000300\.SH/i.test(normalized);
+  const hasUniverse = /沪深\s*300|沪深三百|000300\.SH/i.test(normalized);
   if (!hasUniverse) ambiguities.push("股票池未明确识别；当前仅支持沪深 300（000300.SH）。");
   if (/ESG|分红|股息|ROE|市值|行业/.test(normalized)) unsupported.push("检测到当前 Registry 未支持的指标，请移除后再执行。");
-  const growthMatch = normalized.match(/(?:利润|净利润)(?:增长|CAGR|增速)?(?:超过|大于|高于|>|不少于)?(\d+(?:\.\d+)?)%/i);
-  growthThreshold = growthMatch ? Number(growthMatch[1]) / 100 : 0.10;
-  if (!growthMatch && /利润|增长|增速|CAGR/.test(normalized)) ambiguities.push("“增长较快”未给出阈值，暂以 10% 作为建议值，确认前请核对。");
-  const peMatch = normalized.match(/PE(?:-TTM)?(?:不超过|小于|低于|少于|<|不高于|改成)?(\d+(?:\.\d+)?)/i);
-  const peMin = normalized.match(/PE.*?(?:大于|高于|>)(\d+(?:\.\d+)?)/i);
-  const peMax = normalized.match(/PE.*?(?:小于|低于|不超过|<)(\d+(?:\.\d+)?)/i);
+  const growthMatch = normalized.match(/(?:利润|净利润|营收|收入)(?:增长|增速|CAGR)?(?:超过|大于|高于|>|不少于|不低于|至少)?(\d+(?:\.\d+)?)%/i) || normalized.match(/(?:增长|增速|CAGR)(?:超过|大于|高于|>|不少于|不低于|至少)?(\d+(?:\.\d+)?)%/i);
+  const growthHint = /高增长|增长较快|增速快/.test(normalized) ? 0.15 : 0.10;
+  growthThreshold = growthMatch ? Number(growthMatch[1]) / 100 : growthHint;
+  if (!growthMatch && /利润|增长|增速|CAGR/.test(normalized)) ambiguities.push(`增长条件未给出明确阈值，暂以 ${(growthHint * 100).toFixed(0)}% 作为建议值，确认前请核对。`);
+  const peMatch = normalized.match(/(?:PE(?:-TTM)?|市盈率)(?:不超过|小于|低于|少于|<|不高于|改成|在)?(\d+(?:\.\d+)?)/i) || normalized.match(/(?:低PE|PE较低|估值便宜)(?:是|为|约)?(\d+(?:\.\d+)?)/i);
+  const peMin = normalized.match(/(?:PE|市盈率).*?(?:大于|高于|>)(\d+(?:\.\d+)?)/i);
+  const peMax = normalized.match(/(?:PE|市盈率).*?(?:小于|低于|不超过|<)(\d+(?:\.\d+)?)/i);
   const conflict = Boolean(peMin && peMax && Number(peMin[1]) >= Number(peMax[1]));
   if (conflict) ambiguities.push(`PE 下限 ${peMin[1]}x 不小于上限 ${peMax[1]}x，条件冲突。`);
-  threshold = peMatch ? Number(peMatch[1]) : 25;
-  if (!peMatch && /PE|估值|便宜|合理|不要太高/.test(normalized)) ambiguities.push("PE 条件未给出明确上限，暂以 25x 作为建议值，确认前请核对。");
-  const volMatch = normalized.match(/(?:波动率|波动)(?:小于|低于|不超过|<)?(\d+(?:\.\d+)?)%/i);
-  volatilityThreshold = volMatch ? Number(volMatch[1]) / 100 : 0.30;
-  if (!volMatch && /稳定|波动/.test(normalized)) ambiguities.push("“走势稳定”已映射为 60 日年化波动率，但未给出阈值，暂以 30% 作为建议值。");
+  const peHint = /低估值|便宜|低PE/.test(normalized) ? 15 : 25;
+  threshold = peMatch ? Number(peMatch[1]) : peHint;
+  if (!peMatch && /PE|估值|便宜|合理|不要太高/.test(normalized)) ambiguities.push(`估值条件未给出明确上限，暂以 ${peHint}x 作为建议值，确认前请核对。`);
+  const volMatch = normalized.match(/(?:波动率|波动|稳定性)(?:小于|低于|不超过|<|控制在)?(\d+(?:\.\d+)?)%/i);
+  const volatilityHint = /非常稳定|低波动|波动很小/.test(normalized) ? 0.20 : 0.30;
+  volatilityThreshold = volMatch ? Number(volMatch[1]) / 100 : volatilityHint;
+  if (!volMatch && /稳定|波动/.test(normalized)) ambiguities.push(`稳定性已映射为 60 日年化波动率，但未给出阈值，暂以 ${(volatilityHint * 100).toFixed(0)}% 作为建议值。`);
   if (!hasUniverse) ambiguities.push("请确认股票池后再执行。");
   return { ambiguities: [...ambiguities, ...unsupported], unsupported: unsupported.length > 0, conflict };
 }
@@ -214,7 +219,11 @@ function renderResults() {
   if (!securities.length) {
     $("resultRows").innerHTML = `<tr><td colspan="7" class="empty-state">ZERO_RESULT：当前阈值下没有可展示标的。请调整条件后重新执行；零结果不等于工具失败。</td></tr>`;
   }
-  const rows = securities.map((security) => {
+  const totalPages = Math.max(1, Math.ceil(securities.length / pageSize));
+  currentPage = Math.min(currentPage, totalPages);
+  const start = (currentPage - 1) * pageSize;
+  const visibleSecurities = securities.slice(start, start + pageSize);
+  const rows = visibleSecurities.map((security) => {
     const outcomes = conditions.map((condition) => resultFor(security, condition));
     const state = overall(security);
     const selected = comparedCodes.has(security.code);
@@ -222,6 +231,9 @@ function renderResults() {
     return `<tr><td class="security">${security.name}<span>${security.code}</span></td>${outcomes.map((outcome, index) => `<td><span class="status ${statusClass(outcome.state)}">${outcome.state}</span><span class="mini">${outcome.value === null ? "数据缺失" : conditionValue(outcome, conditions[index])}</span></td>`).join("")}<td><span class="status ${statusClass(state)}">${statusText(state)}</span></td><td><label class="compare-choice"><input class="compare-input" type="checkbox" data-code="${security.code}" ${selected ? "checked" : ""} ${disabled} /><span>加入对比</span></label></td><td><button class="evidence-button" data-code="${security.code}" type="button">查看证据</button></td></tr>`;
   }).join("");
   if (rows) $("resultRows").innerHTML = rows;
+  $("pageSummary").textContent = securities.length ? `第 ${currentPage} / ${totalPages} 页 · 显示 ${start + 1}-${Math.min(start + pageSize, securities.length)} / ${securities.length}` : "无结果";
+  $("prevPage").disabled = currentPage <= 1;
+  $("nextPage").disabled = currentPage >= totalPages;
   const growthPass = securities.filter(s => resultFor(s, conditions[0]).state === "PASS").length;
   const valPassAfterGrowth = securities.filter(s => resultFor(s, conditions[0]).state === "PASS" && resultFor(s, conditions[1]).state === "PASS").length;
   const candidates = securities.filter(s => overall(s) === "PASS").length;
@@ -243,6 +255,10 @@ function renderResults() {
     if (comparedCodes.size >= 2) setWorkflow(4);
   }));
   renderComparison();
+}
+function renderPagination() {
+  currentPage = 1;
+  renderResults();
 }
 function conditionValue(outcome, condition) { return outcome.value === null ? "数据缺失" : fmt(condition, outcome.value); }
 function renderComparison() {
@@ -405,3 +421,6 @@ loadSavedStrategy();
 $("exampleButton").addEventListener("click", () => { $("strategyInput").value = example; $("strategyInput").focus(); });
 $("parseButton").addEventListener("click", parse); $("confirmButton").addEventListener("click", confirm); $("previewButton").addEventListener("click", previewPatch); $("closeDrawer").addEventListener("click", closeEvidence); $("backdrop").addEventListener("click", closeEvidence);
 $("saveButton").addEventListener("click", saveStrategy); $("rerunButton").addEventListener("click", rerunSavedStrategy);
+$("pageSize").addEventListener("change", (event) => { pageSize = Number(event.target.value) || 30; currentPage = 1; if (securities.length) renderResults(); });
+$("prevPage").addEventListener("click", () => { if (currentPage > 1) { currentPage -= 1; renderResults(); } });
+$("nextPage").addEventListener("click", () => { if (currentPage < Math.ceil(securities.length / pageSize)) { currentPage += 1; renderResults(); } });

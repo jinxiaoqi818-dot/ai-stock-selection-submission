@@ -60,6 +60,7 @@
       <div class="funnel" aria-label="全量筛选漏斗"><div><b id="evaluatedCount">0</b><span id="evaluatedLabel">完整评估</span></div><i></i><div><b id="growthCount">0</b><span>增长达标</span></div><i></i><div><b id="valuationCount">0</b><span>估值达标</span></div><i></i><div><b id="candidateCount">0</b><span>候选</span></div></div>
 
       <div class="results-tools"><p class="helper">展开证据核验每项结论；异常状态不会被计入正常 PASS/FAIL。</p><div class="status-legend"><span class="status pass">PASS</span><span class="status fail">FAIL</span><span class="status unknown">UNKNOWN</span><span class="status stale">STALE</span><span class="status tool-error">TOOL_ERROR</span></div></div>
+      <div class="pagination-bar" aria-label="结果分页"><label for="pageSize">每页显示</label><select id="pageSize"><option value="30" selected>30 条</option><option value="50">50 条</option></select><span id="pageSummary" class="helper">第 1 页</span><button id="prevPage" class="secondary" type="button">上一页</button><button id="nextPage" class="secondary" type="button">下一页</button></div>
       <div class="table-wrap"><table>
         <thead><tr><th>标的</th><th>利润增长</th><th>PE-TTM</th><th>60 日波动率</th><th>匹配结果</th><th>对比</th><th><span class="sr-only">操作</span></th></tr></thead>
         <tbody id="resultRows"></tbody>

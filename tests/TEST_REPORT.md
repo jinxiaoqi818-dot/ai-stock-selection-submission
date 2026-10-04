@@ -12,7 +12,7 @@
 
 运行环境：Node.js v24.14.0
 
-结果：**13/13 通过，0 失败**
+结果：**14/14 通过，0 失败**
 
 机器可读证据：`tests/results/latest.json`
 
@@ -23,6 +23,7 @@
 | 参数与异常 | 2 | 通过 | 非法参数 `INVALID`；冲突阈值 HTTP 409 `CONFLICT` |
 | 合规与状态 | 1 | 通过 | 合规拒绝文案及 `TOOL_ERROR/STALE/CONFLICT/ZERO_RESULT/PARTIAL` 路径存在 |
 | Strategy Canvas 与复用 MVP | 1 | 通过 | 代理指标选择、阈值来源、显式确认、保存、重跑和变化摘要标记存在 |
+| 自然语言差异与分页 | 1 | 通过 | 高增长/低估值/低波动建议解析，以及 30/50 条结果分页标记存在 |
 | Secrets 扫描 | 1 | 通过 | 扫描所有 Git 已跟踪文本文件，无已知凭据前缀 |
 | 生产健康检查 | 1 | 通过 | HTTP 200，扶摇 Secret 已配置 |
 | 生产真实数据链路 | 1 | 通过 | 来源为扶摇；完整 Snapshot 覆盖 300/300；结果分组数量可对账；包含 Evidence 和 `request_id` |

@@ -1,17 +1,17 @@
 {
-  "run_at": "2026-10-04T09:32:10.340Z",
+  "run_at": "2026-10-04T09:53:43.134Z",
   "node": "v24.14.0",
   "production_url": "https://ai-stock-selection-submission.vercel.app",
   "totals": {
-    "tests": 13,
-    "passed": 13,
+    "tests": 14,
+    "passed": 14,
     "failed": 0
   },
   "results": [
     {
       "name": "CAGR uses three annual observations",
       "status": "PASS",
-      "duration_ms": 1
+      "duration_ms": 2
     },
     {
       "name": "CAGR missing observations stays UNKNOWN",
@@ -49,29 +49,34 @@
       "duration_ms": 1
     },
     {
+      "name": "Natural-language thresholds and result pagination are present",
+      "status": "PASS",
+      "duration_ms": 1
+    },
+    {
       "name": "Tracked files contain no credential-shaped secrets",
       "status": "PASS",
-      "duration_ms": 97
+      "duration_ms": 96
     },
     {
       "name": "Production health reports configured Fuyao",
       "status": "PASS",
-      "duration_ms": 1899
+      "duration_ms": 1769
     },
     {
       "name": "Production real-data screen returns traceable results",
       "status": "PASS",
-      "duration_ms": 2497
+      "duration_ms": 2205
     },
     {
       "name": "Production zero-result path is explicit",
       "status": "PASS",
-      "duration_ms": 2045
+      "duration_ms": 1567
     },
     {
       "name": "Production conflict path rejects execution",
       "status": "PASS",
-      "duration_ms": 1791
+      "duration_ms": 2055
     }
   ]
 }

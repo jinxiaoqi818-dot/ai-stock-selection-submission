@@ -23,4 +23,9 @@ textarea { width:100%; margin-top:18px; padding:14px; resize:vertical; color:var
 .execution-history { margin-top:14px; padding-top:12px; border-top:1px solid var(--line); }
 .execution-item { display:flex; justify-content:space-between; gap:12px; padding:9px 0; border-bottom:1px solid var(--line); font-size:12px; }
 .execution-item:last-child { border-bottom:0; }
+.pagination-bar { display:flex; align-items:center; gap:10px; margin:12px 0; padding:10px 0; color:#43535d; font-size:12px; }
+.pagination-bar select { min-height:34px; padding:5px 8px; border:1px solid #aebfc4; border-radius:3px; background:#fff; }
+.pagination-bar .helper { margin:0 auto 0 4px; }
+.pagination-bar button:disabled { cursor:not-allowed; opacity:.45; }
 @media (max-width:760px) { .save-row { flex-direction:column; }.save-row .secondary { width:100%; }.canvas-note { align-items:flex-start; flex-direction:column; } }
+@media (max-width:760px) { .pagination-bar { flex-wrap:wrap; }.pagination-bar .helper { width:100%; order:3; margin:0; }.pagination-bar button { flex:1; } }

@@ -102,6 +102,13 @@ async function run() {
     for (const marker of ["threshold_source", "localStorage", "executionSummary", "新增候选", "退出候选"]) assert.ok(app.includes(marker), `missing app marker ${marker}`);
   });
 
+  await test("Natural-language thresholds and result pagination are present", () => {
+    const html = fs.readFileSync(path.join(ROOT, "demo", "index.html"), "utf8");
+    const app = fs.readFileSync(path.join(ROOT, "demo", "app.js"), "utf8");
+    for (const marker of ["pageSize", "30 条", "50 条", "prevPage", "nextPage"]) assert.ok(html.includes(marker), `missing pagination marker ${marker}`);
+    for (const marker of ["高增长", "低估值", "volatilityHint", "visibleSecurities", "currentPage"]) assert.ok(app.includes(marker), `missing parsing/pagination marker ${marker}`);
+  });
+
   await test("Tracked files contain no credential-shaped secrets", () => {
     const files = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT }).toString("utf8").split("\0").filter(Boolean);
     const prefixes = [["sk", "fuyao", ""].join("-"), ["ghp", ""].join("_"), ["github", "pat", ""].join("_")];
