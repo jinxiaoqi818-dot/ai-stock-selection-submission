@@ -1,0 +1,7 @@
+.git/
+.github/
+.tools/
+.vercel/
+docs/
+tests/
+fuyao-llms-full.txt

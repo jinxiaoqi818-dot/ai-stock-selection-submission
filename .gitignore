@@ -1,7 +1,11 @@
 .tools/
+.vercel/
+fuyao-llms-full.txt
 .env
 .env.local
 node_modules/
 dist/
 build/
 
+.vercel
+.env*

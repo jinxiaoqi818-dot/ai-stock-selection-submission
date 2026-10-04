@@ -3,12 +3,8 @@ let threshold = 25;
 let version = 1;
 const comparedCodes = new Set();
 let lastEvidenceTrigger = null;
-
-const securities = [
-  { name: "远航科技", code: "300001.SZ", growth: 0.16, pe: 18.7, volatility: 0.26, source: "扶摇演示适配器", asOf: "2026-10-02 15:00 +08:00" },
-  { name: "恒川制造", code: "600188.SH", growth: 0.13, pe: 21.4, volatility: 0.28, source: "扶摇演示适配器", asOf: "2026-10-02 15:00 +08:00" },
-  { name: "嘉禾消费", code: "000777.SZ", growth: 0.18, pe: null, volatility: 0.22, source: "扶摇演示适配器", asOf: "2026-10-02 15:00 +08:00" }
-];
+let securities = [];
+let apiMeta = null;
 
 const conditions = [
   { id: "growth", name: "利润增长", metric: "归母净利润两年 CAGR", detail: "建议阈值：大于 10%", operator: ">", value: 0.10, unit: "%", period: "2Y" },
@@ -26,10 +22,12 @@ function setWorkflow(stage) {
 }
 function setHeaderVersion(text) { $("headerVersion").textContent = text; }
 function percent(v) { return `${(v * 100).toFixed(1)}%`; }
-function fmt(condition, value) { return condition.unit === "%" ? percent(value) : `${value.toFixed(1)}x`; }
+function fmt(condition, value) { return value === null || value === undefined ? "数据缺失" : condition.unit === "%" ? percent(value) : `${value.toFixed(1)}x`; }
 function resultFor(security, condition) {
   const key = condition.id === "growth" ? "growth" : condition.id === "valuation" ? "pe" : "volatility";
   const value = security[key];
+  const checkKey = condition.id === "valuation" ? "valuation" : condition.id === "stability" ? "stability" : "growth";
+  if (security.checks && security.checks[checkKey] === "TOOL_ERROR") return { state: "TOOL_ERROR", value, reason: "真实数据工具调用失败" };
   if (value === null || value === undefined) return { state: "UNKNOWN", value, reason: "该指标数据缺失，无法判断" };
   const target = typeof condition.value === "function" ? condition.value() : condition.value;
   const pass = condition.operator === ">" ? value > target : value < target;
@@ -37,10 +35,11 @@ function resultFor(security, condition) {
 }
 function overall(security) {
   const states = conditions.map((condition) => resultFor(security, condition).state);
+  if (states.includes("TOOL_ERROR")) return "TOOL_ERROR";
   return states.includes("UNKNOWN") ? "UNKNOWN" : states.every((state) => state === "PASS") ? "PASS" : "FAIL";
 }
-function statusClass(state) { return state === "PASS" ? "pass" : state === "FAIL" ? "fail" : "unknown"; }
-function statusText(state) { return state === "PASS" ? "符合" : state === "FAIL" ? "不符合" : "未知"; }
+function statusClass(state) { return state === "PASS" ? "pass" : state === "FAIL" ? "fail" : state === "TOOL_ERROR" ? "fail" : "unknown"; }
+function statusText(state) { return state === "PASS" ? "符合" : state === "FAIL" ? "不符合" : state === "TOOL_ERROR" ? "工具错误" : "未知"; }
 function renderConditions() {
   $("conditionList").innerHTML = conditions.map((condition, i) => {
     const target = typeof condition.value === "function" ? condition.value() : condition.value;
@@ -63,7 +62,11 @@ function renderResults() {
   $("valuationCount").textContent = valPassAfterGrowth;
   $("candidateCount").textContent = candidates;
   $("versionTag").textContent = `策略 v${version}`;
-  $("resultSubtitle").textContent = `已确认：利润 CAGR > 10%，PE-TTM < ${threshold}x，60 日波动率 < 30%`;
+  const metaText = apiMeta ? `真实数据：${apiMeta.evaluated_count}/${apiMeta.universe_total} 只已评估；${apiMeta.selection_note || ""}` : "";
+  $("resultSubtitle").textContent = `已确认：利润 CAGR > 10%，PE-TTM < ${threshold}x，60 日波动率 < 30%。${metaText}`;
+  const asOf = apiMeta?.as_of ? new Date(apiMeta.as_of).toLocaleString("zh-CN", { hour12: false }) : "未获取";
+  const asOfTag = document.querySelector(".result-tags .tag:last-child");
+  if (asOfTag) asOfTag.textContent = `as of ${asOf}`;
   document.querySelectorAll(".evidence-button").forEach((button) => button.addEventListener("click", () => openEvidence(button.dataset.code, button)));
   document.querySelectorAll(".compare-input").forEach((input) => input.addEventListener("change", () => {
     if (input.checked) comparedCodes.add(input.dataset.code); else comparedCodes.delete(input.dataset.code);
@@ -106,9 +109,13 @@ function openEvidence(code, trigger) {
   $("evidenceContent").innerHTML = outcomes.map(({ condition, outcome }) => {
     const target = outcome.target === undefined ? (typeof condition.value === "function" ? condition.value() : condition.value) : outcome.target;
     const display = outcome.value === null ? "数据缺失" : fmt(condition, outcome.value);
-    const rule = outcome.value === null ? "无有效数值 -> UNKNOWN" : `${display} ${condition.operator} ${fmt(condition, target)} -> ${outcome.state}`;
-    return `<section class="evidence-item"><h3>${condition.name} · <span class="status ${statusClass(outcome.state)}">${outcome.state}</span></h3><p class="evidence-rule">${rule}</p><div class="evidence-grid"><div><span>原始值</span><b>${display}</b></div><div><span>统计口径</span><b>${condition.period}</b></div><div><span>数据来源</span><b>${security.source}</b></div><div><span>数据时点</span><b>${security.asOf}</b></div><div><span>单位</span><b>${condition.unit === "%" ? "ratio" : "multiple"}</b></div><div><span>质量状态</span><b>${outcome.value === null ? "UNKNOWN" : "VALID"}</b></div></div></section>`;
-  }).join("") + `<p class="boundary">说明：此处为构造演示数据。真实环境需回链到扶摇或 iFinD 的已验证工具响应。</p>`;
+    const rule = outcome.value === null ? `无有效数值 -> ${outcome.state}` : `${display} ${condition.operator} ${fmt(condition, target)} -> ${outcome.state}`;
+    const evidenceKey = condition.id === "valuation" ? "valuation" : condition.id === "stability" ? "stability" : "growth";
+    const evidence = security.evidence?.[evidenceKey];
+    const requestKey = condition.id === "valuation" ? "valuation" : condition.id === "stability" ? "prices" : "financials";
+    const requestId = security.request_ids?.[requestKey] || "未返回";
+    return `<section class="evidence-item"><h3>${condition.name} · <span class="status ${statusClass(outcome.state)}">${outcome.state}</span></h3><p class="evidence-rule">${rule}</p><div class="evidence-grid"><div><span>原始值</span><b>${display}</b></div><div><span>统计口径</span><b>${evidence?.period || condition.period}</b></div><div><span>数据来源</span><b>${security.source}</b></div><div><span>数据时点</span><b>${security.asOf}</b></div><div><span>字段映射</span><b>${evidence?.field || "未返回"}</b></div><div><span>request_id</span><b>${requestId}</b></div></div></section>`;
+  }).join("") + `<p class="boundary">证据来自扶摇真实接口；指数、估值、财务和行情均保留字段映射与 request_id。${apiMeta?.selection_note || ""}</p>`;
   $("evidenceDrawer").classList.remove("hidden"); $("backdrop").classList.remove("hidden");
 }
 function closeEvidence() { $("evidenceDrawer").classList.add("hidden"); $("backdrop").classList.add("hidden"); if (lastEvidenceTrigger) lastEvidenceTrigger.focus(); }
@@ -118,7 +125,26 @@ function parse() {
   if (/必涨|买入|收益|推荐/.test(text)) { $("inputMessage").textContent = "本产品仅编译筛选策略，不生成涨跌预测、收益承诺或买卖建议。请描述可验证的筛选条件。"; return; }
   renderConditions(); $("clarificationPanel").classList.remove("hidden"); $("strategyStatus").textContent = "待确认"; $("strategyStatus").className = "status warning"; $("inputMessage").textContent = "已提取股票池和三项条件；建议阈值仍需由你确认。"; setWorkflow(2); setHeaderVersion("草稿待确认"); $("clarificationPanel").scrollIntoView({ behavior: "smooth", block: "start" }); $("confirmButton").focus();
 }
-function confirm() { $("clarificationPanel").classList.add("hidden"); $("resultsPanel").classList.remove("hidden"); $("strategyStatus").textContent = "已执行"; $("strategyStatus").className = "status pass"; setWorkflow(3); setHeaderVersion(`策略 v${version}`); renderResults(); $("resultsPanel").scrollIntoView({ behavior: "smooth", block: "start" }); }
+async function confirm() {
+  $("clarificationPanel").classList.add("hidden"); $("resultsPanel").classList.remove("hidden");
+  $("strategyStatus").textContent = "正在获取真实数据"; $("strategyStatus").className = "status warning"; setWorkflow(3); setHeaderVersion("真实数据加载中");
+  $("resultRows").innerHTML = `<tr><td colspan="7" class="helper">正在获取沪深 300 成分、估值、财务和历史 K 线，请稍候...</td></tr>`;
+  $("resultsPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+  try {
+    const response = await fetch("/api/screen");
+    const payload = await response.json();
+    if (!response.ok || payload.status === "TOOL_ERROR") throw new Error(payload.message || "真实数据接口调用失败");
+    securities = Array.isArray(payload.data) ? payload.data : [];
+    apiMeta = payload;
+    $("strategyStatus").textContent = "已执行"; $("strategyStatus").className = "status pass"; setHeaderVersion(`策略 v${version}`); renderResults();
+  } catch (error) {
+    securities = []; apiMeta = null;
+    $("strategyStatus").textContent = "工具错误"; $("strategyStatus").className = "status fail"; setHeaderVersion("真实数据获取失败");
+    $("resultSubtitle").textContent = `无法完成真实数据筛选：${error.message}`;
+    $("resultRows").innerHTML = `<tr><td colspan="7" class="helper">TOOL_ERROR：${error.message}。请检查 Vercel 的 FUYAO_API_KEY 和接口状态。</td></tr>`;
+    $("growthCount").textContent = "-"; $("valuationCount").textContent = "-"; $("candidateCount").textContent = "-";
+  }
+}
 function previewPatch() {
   const text = $("editInput").value; const matched = text.match(/PE\s*(?:改成|小于|<)\s*(\d+)/i);
   if (!matched) { $("patchPreview").innerHTML = `<p>未识别到可执行的 PE 修改。请使用“把 PE 改成 20，其他不变”。</p>`; $("patchPreview").classList.remove("hidden"); return; }
