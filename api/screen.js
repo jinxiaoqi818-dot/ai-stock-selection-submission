@@ -1,7 +1,8 @@
 const FUYAO_BASE_URL = "https://fuyao.aicubes.cn";
 const INDEX_CODE = "000300.SH";
 const THSCODE_PATTERN = /^\d{6}\.(SH|SZ|BJ)$/;
-const EVALUATION_LIMIT = 10;
+// Vercel Hobby functions have a short execution ceiling; keep this MVP bounded.
+const EVALUATION_LIMIT = 3;
 const PE_LIMIT = 25;
 const GROWTH_LIMIT = 0.10;
 const VOLATILITY_LIMIT = 0.30;
@@ -153,11 +154,7 @@ module.exports = async (request, response) => {
       .filter((item) => item.valuation && number(item.valuation.pe_ttm) !== null && number(item.valuation.pe_ttm) < PE_LIMIT)
       .slice(0, EVALUATION_LIMIT);
     const endMs = number(valuation.payload?.data?.timestamp) || Date.now();
-    const results = [];
-    for (let i = 0; i < ranked.length; i += 3) {
-      const batch = ranked.slice(i, i + 3);
-      results.push(...await Promise.all(batch.map((item) => evaluateStock(item.stock, { ...item.valuation, __payload: valuation.payload }, apiKey, endMs))));
-    }
+    const results = await Promise.all(ranked.map((item) => evaluateStock(item.stock, { ...item.valuation, __payload: valuation.payload }, apiKey, endMs)));
     const allRequestIds = {
       constituents: requestId(constituents.payload),
       valuations: requestId(valuation.payload),
