@@ -8,6 +8,9 @@ const comparedCodes = new Set();
 let lastEvidenceTrigger = null;
 let securities = [];
 let apiMeta = null;
+let savedStrategy = null;
+let executions = [];
+const STORAGE_KEY = "strategy-compiler.saved.v1";
 
 let conditions = [
   { id: "growth", name: "利润增长", metric: "归母净利润两年 CAGR", detail: "建议阈值：大于 10%", operator: ">", value: 0.10, unit: "%", period: "2Y" },
@@ -22,7 +25,7 @@ function createStrategyState(rawText) {
     status: "READY_TO_CONFIRM",
     raw_text: rawText,
     universe: { type: "index", id: "000300.SH", name: "沪深 300", resolution_status: "RESOLVED" },
-    conditions: conditions.map((condition) => ({ id: condition.id, metric: condition.metric, operator: condition.operator, value: typeof condition.value === "function" ? condition.value() : condition.value, unit: condition.unit, period: condition.period, status: "PROPOSED" })),
+    conditions: conditions.map((condition) => ({ id: condition.id, metric: condition.metric, operator: condition.operator, value: typeof condition.value === "function" ? condition.value() : condition.value, unit: condition.unit, period: condition.period, threshold_source: "system_suggestion", status: "PROPOSED" })),
     ambiguities: [],
     audit: [{ event: "PARSED", at: new Date().toISOString(), version }],
   };
@@ -69,6 +72,79 @@ function setWorkflow(stage) {
   });
 }
 function setHeaderVersion(text) { $("headerVersion").textContent = text; }
+function loadSavedStrategy() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    savedStrategy = JSON.parse(raw);
+    executions = savedStrategy.executions || [];
+    $("strategyName").value = savedStrategy.name || $("strategyName").value;
+    renderExecutionHistory();
+    $("saveMessage").textContent = `已加载保存策略：${savedStrategy.name}，${executions.length} 次 Execution。`;
+  } catch (_) {
+    savedStrategy = null;
+    executions = [];
+  }
+}
+function executionSummary(payload) {
+  return {
+    execution_id: `exe_${Date.now().toString(36)}`,
+    at: new Date().toISOString(),
+    snapshot_id: payload.snapshot_id,
+    status: payload.status,
+    evaluated_count: payload.evaluated_count,
+    category_counts: payload.category_counts || {},
+    candidate_codes: (payload.data || []).filter((item) => item.category === "CANDIDATE" || item.state === "PASS").map((item) => item.code).sort()
+  };
+}
+function renderExecutionHistory() {
+  const panel = $("executionHistory");
+  if (!panel || !executions.length) { if (panel) panel.classList.add("hidden"); return; }
+  panel.classList.remove("hidden");
+  panel.innerHTML = `<b>Execution 历史</b>${executions.slice().reverse().map((item, index) => {
+    const previous = executions[executions.length - index - 2];
+    const added = previous ? item.candidate_codes.filter((code) => !previous.candidate_codes.includes(code)).length : 0;
+    const removed = previous ? previous.candidate_codes.filter((code) => !item.candidate_codes.includes(code)).length : 0;
+    return `<div class="execution-item"><span><b>${item.execution_id}</b><span class="mini">${new Date(item.at).toLocaleString("zh-CN")} · ${item.status} · ${item.evaluated_count}/${savedStrategy?.universe_total || 300}</span></span><span>${previous ? `新增候选 ${added} · 退出候选 ${removed}` : "基线 Execution"}</span></div>`;
+  }).join("")}`;
+}
+function persistSavedStrategy() {
+  if (!strategyState || !apiMeta) return false;
+  savedStrategy = {
+    strategy_id: strategyState.strategy_id,
+    name: $("strategyName").value.trim() || "未命名策略",
+    version,
+    raw_text: strategyState.raw_text,
+    conditions: strategyState.conditions,
+    universe_total: apiMeta.universe_total,
+    saved_at: new Date().toISOString(),
+    executions: executions.slice(-20)
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(savedStrategy));
+  $("saveMessage").textContent = `已保存 ${savedStrategy.name} · v${version} · ${executions.length} 次 Execution。`;
+  renderExecutionHistory();
+  return true;
+}
+function saveStrategy() {
+  if (!strategyState || !apiMeta || strategyState.status !== "RESULT_READY") {
+    $("saveMessage").textContent = "请先完成确认执行，再保存策略。";
+    return;
+  }
+  persistSavedStrategy();
+}
+function rerunSavedStrategy() {
+  if (!savedStrategy) {
+    $("saveMessage").textContent = "请先保存一个已确认策略。";
+    return;
+  }
+  threshold = Number(savedStrategy.conditions.find((item) => item.id === "valuation")?.value ?? 25);
+  growthThreshold = Number(savedStrategy.conditions.find((item) => item.id === "growth")?.value ?? 0.1);
+  volatilityThreshold = Number(savedStrategy.conditions.find((item) => item.id === "stability")?.value ?? 0.3);
+  version = savedStrategy.version;
+  strategyState = { ...savedStrategy, status: "CONFIRMED", audit: [{ event: "RERUN_REQUESTED", at: new Date().toISOString(), version }] };
+  $("resultsPanel").classList.remove("hidden");
+  void confirm();
+}
 function percent(v) { return `${(v * 100).toFixed(1)}%`; }
 function fmt(condition, value) { return value === null || value === undefined ? "数据缺失" : condition.unit === "%" ? percent(value) : `${value.toFixed(1)}x`; }
 function resultFor(security, condition) {
@@ -93,8 +169,46 @@ function statusText(state) { return state === "PASS" ? "符合" : state === "FAI
 function renderConditions() {
   $("conditionList").innerHTML = conditions.map((condition, i) => {
     const target = typeof condition.value === "function" ? condition.value() : condition.value;
-    return `<div class="condition"><span class="condition-index">0${i + 1}</span><div><div class="condition-name">${condition.name} · ${condition.metric}</div><div class="condition-detail">${condition.detail}</div></div><span class="condition-value">${condition.operator} ${fmt(condition, target)}</span><span class="condition-state">待确认</span></div>`;
+    const source = strategyState?.conditions?.find((item) => item.id === condition.id)?.threshold_source || "system_suggestion";
+    const step = condition.unit === "x" ? 1 : 0.01;
+    const metricOptions = { growth: [["growth_cagr", "归母净利润两年 CAGR"], ["growth_revenue", "营业收入两年 CAGR（待接入）"]], valuation: [["valuation_pe", "PE-TTM"], ["valuation_pb", "PB（待接入）"]], stability: [["stability_60d", "60 日年化波动率"], ["stability_20d", "20 日年化波动率（待接入）"]] }[condition.id];
+    return `<div class="condition"><span class="condition-index">0${i + 1}</span><div><div class="condition-name">${condition.name} · ${condition.metric}</div><div class="condition-detail">${condition.detail}</div></div><select class="canvas-select" data-canvas-metric="${condition.id}" aria-label="${condition.name}代理指标">${metricOptions.map(([value, label]) => `<option value="${value}" ${label.startsWith(condition.metric) ? "selected" : ""}>${label}</option>`).join("")}</select><div><label class="sr-only" for="canvas-${condition.id}">${condition.name}阈值</label><input class="canvas-input" id="canvas-${condition.id}" data-canvas-value="${condition.id}" type="number" step="${step}" value="${condition.unit === "%" ? (target * 100).toFixed(1) : target}" /></div><select class="canvas-select" data-canvas-source="${condition.id}" aria-label="${condition.name}阈值来源"><option value="system_suggestion" ${source === "system_suggestion" ? "selected" : ""}>系统建议</option><option value="user_confirmed" ${source === "user_confirmed" ? "selected" : ""}>用户明确</option><option value="universe_percentile" ${source === "universe_percentile" ? "selected" : ""}>股票池分位数</option></select><span class="condition-value">${condition.operator} ${fmt(condition, target)}</span><span class="condition-state">待确认</span></div>`;
   }).join("");
+  document.querySelectorAll("[data-canvas-value]").forEach((input) => input.addEventListener("change", () => updateCanvas(input.dataset.canvasValue, input.value)));
+  document.querySelectorAll("[data-canvas-source]").forEach((input) => input.addEventListener("change", () => updateCanvasSource(input.dataset.canvasSource, input.value)));
+  document.querySelectorAll("[data-canvas-metric]").forEach((input) => input.addEventListener("change", () => updateCanvasMetric(input.dataset.canvasMetric, input.value)));
+}
+function updateCanvasMetric(id, metric) {
+  const supported = { growth: "growth_cagr", valuation: "valuation_pe", stability: "stability_60d" }[id];
+  if (metric !== supported) {
+    if (strategyState) strategyState.status = "UNSUPPORTED";
+    $("strategyStatus").textContent = "不支持";
+    $("strategyStatus").className = "status fail";
+    $("inputMessage").textContent = "当前 Registry 尚未支持该代理指标，已阻止执行；请选择已接入指标。";
+    return;
+  }
+  if (strategyState) strategyState.status = "READY_TO_CONFIRM";
+}
+function updateCanvas(id, rawValue) {
+  const number = Number(rawValue);
+  if (!Number.isFinite(number)) return;
+  if (id === "growth") growthThreshold = number > 1 ? number / 100 : number;
+  if (id === "valuation") threshold = number;
+  if (id === "stability") volatilityThreshold = number > 1 ? number / 100 : number;
+  syncConditions();
+  if (strategyState) {
+    strategyState.conditions = conditions.map((condition) => ({ id: condition.id, metric: condition.metric, operator: condition.operator, value: typeof condition.value === "function" ? condition.value() : condition.value, unit: condition.unit, period: condition.period, threshold_source: strategyState.conditions?.find((item) => item.id === condition.id)?.threshold_source || "user_confirmed", status: "PROPOSED" }));
+    strategyState.ambiguities = (strategyState.ambiguities || []).filter((item) => !item.includes("未给出阈值") && !item.includes("暂以"));
+    strategyState.status = "READY_TO_CONFIRM";
+  }
+  renderConditions();
+  $("inputMessage").textContent = "Canvas 已更新，请勾选确认后执行。";
+  $("strategyStatus").textContent = "待确认";
+  $("strategyStatus").className = "status warning";
+}
+function updateCanvasSource(id, source) {
+  if (!strategyState) return;
+  strategyState.conditions = strategyState.conditions.map((condition) => condition.id === id ? { ...condition, threshold_source: source } : condition);
 }
 function renderResults() {
   if (!securities.length) {
@@ -180,6 +294,7 @@ function parse() {
   if (!text) { $("inputMessage").textContent = "请先输入一段选股想法。"; return; }
   if (/必涨|买入|收益|推荐/.test(text)) { $("inputMessage").textContent = "本产品仅编译筛选策略，不生成涨跌预测、收益承诺或买卖建议。请描述可验证的筛选条件。"; return; }
   const parsed = parseIntent(text);
+  $("clarificationAck").checked = false;
   syncConditions();
   strategyState = createStrategyState(text);
   strategyState.ambiguities = parsed.ambiguities;
@@ -205,6 +320,10 @@ async function confirm() {
     $("inputMessage").textContent = "请先构建策略草稿。";
     return;
   }
+  if (strategyState.status !== "CONFIRMED" && !$("clarificationAck").checked) {
+    $("inputMessage").textContent = "请先勾选确认代理指标、计算口径和阈值；未确认的澄清项不会执行。";
+    return;
+  }
   strategyState.status = "CONFIRMED";
   strategyState.audit.push({ event: "CONFIRMED", at: new Date().toISOString(), version: strategyState.version });
   $("clarificationPanel").classList.add("hidden"); $("resultsPanel").classList.remove("hidden");
@@ -228,6 +347,16 @@ async function confirm() {
     $("evaluatedLabel").textContent = fullCoverage ? "完整评估" : "深度评估样本";
     strategyState.status = "RESULT_READY";
     strategyState.audit.push({ event: "RESULT_READY", at: new Date().toISOString(), request_id: payload.request_id, as_of: payload.as_of });
+    executions.push(executionSummary(payload));
+    if (savedStrategy) {
+      savedStrategy.version = version;
+      savedStrategy.conditions = strategyState.conditions;
+      savedStrategy.executions = executions.slice(-20);
+      savedStrategy.universe_total = payload.universe_total;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(savedStrategy));
+    }
+    renderExecutionHistory();
+    $("saveMessage").textContent = savedStrategy ? `已完成第 ${executions.length} 次 Execution，可查看与上次的变化。` : "本次 Execution 已完成；现在可以保存策略。";
     const abnormal = ["STALE", "PARTIAL", "ZERO_RESULT"].includes(payload.status);
     $("strategyStatus").textContent = abnormal ? payload.status : "已执行"; $("strategyStatus").className = `status ${abnormal ? "warning" : "pass"}`; setHeaderVersion(`策略 v${version}`); renderResults();
   } catch (error) {
@@ -272,5 +401,7 @@ function previewPatch() {
   });
   $("cancelPatch").addEventListener("click", () => $("patchPreview").classList.add("hidden"));
 }
+loadSavedStrategy();
 $("exampleButton").addEventListener("click", () => { $("strategyInput").value = example; $("strategyInput").focus(); });
 $("parseButton").addEventListener("click", parse); $("confirmButton").addEventListener("click", confirm); $("previewButton").addEventListener("click", previewPatch); $("closeDrawer").addEventListener("click", closeEvidence); $("backdrop").addEventListener("click", closeEvidence);
+$("saveButton").addEventListener("click", saveStrategy); $("rerunButton").addEventListener("click", rerunSavedStrategy);

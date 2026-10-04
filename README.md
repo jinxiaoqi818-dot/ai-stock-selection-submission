@@ -43,22 +43,24 @@
 - 来源、时点、字段映射和 `request_id`；
 - 模糊条件提示、明确阈值识别和 Unsupported 阻断；
 - PE、增长率和波动率的最小 Patch 与版本审计；
+- Strategy Canvas：代理指标、阈值来源和阻断式确认；
+- 浏览器端保存 Strategy Version、再次运行和 Execution 变化摘要（Demo MVP）；
 - 12 项本地与生产自动化测试及 GitHub Actions。
 - 完整沪深 300 真实 Snapshot，覆盖率 100%，候选、临界未入选、其他未通过和数据缺口数量可对账。
 
 ## 当前限制
 
-- 模糊条件仍使用规则解析器和模板建议值，尚未实现方案 B 的代理指标选择界面；
+- 模糊条件仍由确定性规则解析器提出建议，开放式 LLM 语义理解尚未接入；
 - 产品运行时尚未接入外部 LLM，不声称具备开放语义理解能力；
-- Strategy State 尚未服务端持久化，没有保存、重跑和 Execution diff；
+- 保存、重跑和 Execution diff 当前使用浏览器 localStorage，尚未接入多用户服务端 Strategy Store；
 - 尚未接入 iFinD、定期监控或回测；
 - 20 名用户、50 次真实执行和 100 条 Evidence 抽样尚未执行。
 
 ## 下一实施顺序
 
-1. 实现 Strategy Canvas：代理指标、阈值来源和阻断式澄清；
+1. 将浏览器 localStorage 迁移为服务端 Strategy Store，支持多用户历史和权限；
 2. 在 UI 中增加候选、临界未入选、其他未通过、数据缺口和工具错误 Tabs；
-3. 持久化 Strategy Version 和 Execution，支持保存、一键重跑和变化摘要；
+3. 完成 20 名用户、50 次真实执行和 100 条 Evidence 的正式验收；
 4. 上述闭环验证后，再评估定期监控、iFinD 和回测。
 
 ## 本地运行

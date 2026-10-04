@@ -46,6 +46,8 @@
         <div><p class="field-label">计算口径</p><p class="assumption">利润增长使用归母净利润两年 CAGR；稳定性使用 60 个交易日年化波动率。</p></div>
       </div>
       <div class="condition-list" id="conditionList"></div>
+      <div class="canvas-note"><b>Strategy Canvas</b><span>每个代理指标、阈值和来源都必须显式确认；系统不会把模糊词静默当成事实。</span></div>
+      <label class="confirm-check"><input id="clarificationAck" type="checkbox" /> 我已核对代理指标、计算口径和阈值，允许创建本次 Execution</label>
       <div class="confirm-bar"><p>当前版本确认后锁定，之后的修改会生成新版本。</p><button class="primary" id="confirmButton" type="button">确认并执行</button></div>
     </section>
 
@@ -73,6 +75,12 @@
         <div><p class="step">04</p><h2 id="edit-title">修改策略</h2><p class="helper">输入修改意图后，先查看差异，再决定是否生成新版本。</p></div>
         <div class="edit-row"><input id="editInput" type="text" value="把 PE 改成 20，其他不变" aria-label="策略修改" /><button id="previewButton" class="secondary" type="button">预览修改</button></div>
         <div id="patchPreview" class="patch hidden" aria-live="polite"></div>
+      </section>
+      <section class="save-panel" aria-labelledby="save-title">
+        <div><p class="step">05</p><h2 id="save-title">保存与再次运行</h2><p class="helper">保存的是已确认的 Strategy Version；每次重跑都会留下新的 Execution 和变化摘要。</p></div>
+        <div class="save-row"><label class="sr-only" for="strategyName">策略名称</label><input id="strategyName" type="text" value="沪深 300 增长估值稳定策略" placeholder="给已确认策略命名" /><button class="secondary" id="saveButton" type="button">保存策略</button><button class="secondary" id="rerunButton" type="button">再次运行</button></div>
+        <div id="saveMessage" class="helper" aria-live="polite">尚未保存。完成一次确认执行后可以保存。</div>
+        <div id="executionHistory" class="execution-history hidden"></div>
       </section>
     </section>
   </main>

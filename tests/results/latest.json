@@ -1,17 +1,17 @@
 {
-  "run_at": "2026-10-04T07:20:05.712Z",
+  "run_at": "2026-10-04T09:27:57.901Z",
   "node": "v24.14.0",
   "production_url": "https://ai-stock-selection-submission.vercel.app",
   "totals": {
-    "tests": 12,
-    "passed": 12,
+    "tests": 13,
+    "passed": 13,
     "failed": 0
   },
   "results": [
     {
       "name": "CAGR uses three annual observations",
       "status": "PASS",
-      "duration_ms": 0
+      "duration_ms": 1
     },
     {
       "name": "CAGR missing observations stays UNKNOWN",
@@ -21,7 +21,7 @@
     {
       "name": "Null numeric fields remain missing",
       "status": "PASS",
-      "duration_ms": 1
+      "duration_ms": 0
     },
     {
       "name": "60-day volatility requires 61 closes",
@@ -31,7 +31,7 @@
     {
       "name": "Invalid parameter returns INVALID before tool calls",
       "status": "PASS",
-      "duration_ms": 0
+      "duration_ms": 1
     },
     {
       "name": "Conflicting bounds return CONFLICT before tool calls",
@@ -41,32 +41,37 @@
     {
       "name": "Compliance boundary and abnormal states are present",
       "status": "PASS",
+      "duration_ms": 1
+    },
+    {
+      "name": "Strategy Canvas and reuse MVP are present",
+      "status": "PASS",
       "duration_ms": 0
     },
     {
       "name": "Tracked files contain no credential-shaped secrets",
       "status": "PASS",
-      "duration_ms": 95
+      "duration_ms": 94
     },
     {
       "name": "Production health reports configured Fuyao",
       "status": "PASS",
-      "duration_ms": 1769
+      "duration_ms": 2202
     },
     {
       "name": "Production real-data screen returns traceable results",
       "status": "PASS",
-      "duration_ms": 1838
+      "duration_ms": 1939
     },
     {
       "name": "Production zero-result path is explicit",
       "status": "PASS",
-      "duration_ms": 1482
+      "duration_ms": 1978
     },
     {
       "name": "Production conflict path rejects execution",
       "status": "PASS",
-      "duration_ms": 1321
+      "duration_ms": 1308
     }
   ]
 }

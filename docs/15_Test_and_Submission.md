@@ -35,7 +35,8 @@
 | 测试 | OpenAI Codex | 编写 12 项单元、安全与生产冒烟测试，生成 JSON 运行证据和 GitHub Actions | Node/curl 在本机网络失败后改用 PowerShell HTTP 客户端；最终本地和 CI 均通过 | `tests/TEST_REPORT.md`、`tests/results/latest.json`；提交 `ed0d370`；Actions run `37182707929` |
 | 合规检查 | OpenAI Codex | 添加预测/荐股拒绝、异常不得转为 PASS/FAIL、已跟踪文件 Secrets 扫描 | 未把未执行的 20 用户、50 次运行、100 条 Evidence 抽样写成已通过 | `tests/test-cases.md`、`tests/TEST_REPORT.md` |
 | 产品二次复盘 | OpenAI Codex 辅助审查 | 从产品承诺、策略语义和持续使用闭环三个角度挑战首版方案，并协助整理方案 B | 候选人审定三项问题，决定优先全量覆盖、阻断式澄清、保存与重跑；在全量覆盖完成前坚持只称为策略样本验证 | `docs/Business_Owner_Review_and_Revision.md`、方案 B 版 `docs/10_PRD.md` 至 `docs/14_Engineering_Plan.md` |
-| 方案 B 第一项落地 | OpenAI Codex + 扶摇 REST API | 实现受保护的分块构建脚本、300 只标准化 Snapshot、确定性全量筛选和覆盖率对账 | 候选人将“完整股票池覆盖”提升为 P0；实际验证 300/300、覆盖率 100%，四类结果合计 300；未将后续两项 P0 提前标为完成 | `scripts/build-snapshot.js`、`data/universe-snapshot.json`、`tests/results/latest.json`；生产 `/api/screen` |
+| 方案 B 第一项落地 | OpenAI Codex + 扶摇 REST API | 实现受保护的分块构建脚本、300 只标准化 Snapshot、确定性全量筛选和覆盖率对账 | 候选人将“完整股票池覆盖”提升为 P0；实际验证 300/300、覆盖率 100%，四类结果合计 300 | `scripts/build-snapshot.js`、`data/universe-snapshot.json`、`tests/results/latest.json`；生产 `/api/screen` |
+| 方案 B 第二、三项 MVP | OpenAI Codex | 实现 Strategy Canvas 的代理指标/阈值来源选择、阻断式确认、浏览器端保存、再次运行和 Execution 变化摘要 | 候选人确认 Demo 先完成单浏览器闭环；服务端多用户持久化和正式量化验收不冒充完成 | `demo/index.html`、`demo/app.js`、`demo/styles.css` |
 
 ### 2.1 关键人工判断和修正
 
@@ -47,7 +48,7 @@
 6. 候选人复盘后否决了“有限样本也可作为正式沪深 300 候选”的隐含假设，要求正式结果覆盖率为 100%，否则必须显式切换为样本验证模式。
 7. 候选人将 10%、25x、30% 从默认执行规则降级为模板建议，方案 B 改为先选择代理指标，再确认用户明确值或股票池分位数。
 8. 候选人认为“研究入口”仍不足以形成复用价值，因此将保存策略和再次运行提升为 P0，将定期监控、iFinD 和回测后置。
-9. 全量 Snapshot 于 2026-10-04 实际生成，覆盖 300/300 只沪深 300 成分；候选人只将“全量覆盖”认定为已完成，Strategy Canvas、策略保存和再次运行仍保留为未完成。
+9. 全量 Snapshot 于 2026-10-04 实际生成，覆盖 300/300 只沪深 300 成分；随后补齐了单浏览器 Strategy Canvas、保存和再次运行 MVP，但将服务端多用户存储和正式量化验收保留为未完成。
 
 ### 2.2 已知 AI 边界
 
@@ -65,7 +66,7 @@
 - [x] 真实的 AI 使用与验证记录
 - [ ] 60-180 秒演示视频（可选）
 - [x] 仓库 Secrets 扫描通过，无个人隐私和受限数据
-- [ ] CFO 验收 A01-A13 全部通过，并附上原始日志、账单和工时记录
+- [ ] CFO 验收 A01-A13 全部通过，并附上原始日志、账单和工时记录（当前仍未执行 20 用户、50 次执行、100 条 Evidence 抽样）
 - [ ] G0-G3 阶段闸门记录完整，未在 G0 通过前宣称真实数据能力
 
 ## 4. 建议演示脚本

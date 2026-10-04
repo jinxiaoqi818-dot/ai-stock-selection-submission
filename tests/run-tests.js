@@ -95,6 +95,13 @@ async function run() {
     assert.ok(!app.includes("远航科技"), "constructed security data remains in the main UI");
   });
 
+  await test("Strategy Canvas and reuse MVP are present", () => {
+    const html = fs.readFileSync(path.join(ROOT, "demo", "index.html"), "utf8");
+    const app = fs.readFileSync(path.join(ROOT, "demo", "app.js"), "utf8");
+    for (const marker of ["Strategy Canvas", "clarificationAck", "strategyName", "saveButton", "rerunButton", "executionHistory"]) assert.ok(html.includes(marker), `missing html marker ${marker}`);
+    for (const marker of ["threshold_source", "localStorage", "executionSummary", "新增候选", "退出候选"]) assert.ok(app.includes(marker), `missing app marker ${marker}`);
+  });
+
   await test("Tracked files contain no credential-shaped secrets", () => {
     const files = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT }).toString("utf8").split("\0").filter(Boolean);
     const prefixes = [["sk", "fuyao", ""].join("-"), ["ghp", ""].join("_"), ["github", "pat", ""].join("_")];
