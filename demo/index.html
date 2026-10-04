@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>策略编译器 Demo</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">S</span><span>Strategy Compiler</span></div>
+    <div class="top-meta"><span id="headerVersion" class="header-version">草稿</span><span class="demo-badge">演示数据</span><span>不构成投资建议</span></div>
+  </header>
+
+  <main class="shell">
+    <section class="intro">
+      <p class="eyebrow">AI 智能选股</p>
+      <h1>把投资想法编译成可验证的策略</h1>
+      <p class="lead">从表达、确认到核验和研究交接，每一步都有可见状态与可追溯证据。</p>
+    </section>
+
+    <nav class="workflow" aria-label="策略工作流">
+      <div class="workflow-step is-active" data-stage="1"><span>1</span><div><b>定义策略</b><small>输入你的想法</small></div></div>
+      <div class="workflow-line" aria-hidden="true"></div>
+      <div class="workflow-step" data-stage="2"><span>2</span><div><b>确认规则</b><small>核对口径与阈值</small></div></div>
+      <div class="workflow-line" aria-hidden="true"></div>
+      <div class="workflow-step" data-stage="3"><span>3</span><div><b>核验结果</b><small>查看条件与证据</small></div></div>
+      <div class="workflow-line" aria-hidden="true"></div>
+      <div class="workflow-step" data-stage="4"><span>4</span><div><b>对比与迭代</b><small>继续研究或修改</small></div></div>
+    </nav>
+
+    <section class="workspace" aria-labelledby="input-title">
+      <div class="section-heading"><div><p class="step">01</p><h2 id="input-title">描述你的策略</h2></div><span id="strategyStatus" class="status neutral">待输入</span></div>
+      <label class="sr-only" for="strategyInput">策略描述</label>
+      <textarea id="strategyInput" rows="4" placeholder="例如：在沪深300里找近两年利润增长较快、PE不要太高、走势比较稳定的公司。"></textarea>
+      <div class="input-footer">
+        <p id="inputMessage" class="helper" aria-live="polite">先生成策略草稿，确认后才会执行筛选。</p>
+        <div class="input-actions"><button class="text-action" id="exampleButton" type="button">填入示例</button><button class="primary" id="parseButton" type="button">构建策略</button></div>
+      </div>
+    </section>
+
+    <section id="clarificationPanel" class="panel hidden" aria-labelledby="clarification-title">
+      <div class="section-heading"><div><p class="step">02</p><h2 id="clarification-title">核对策略草稿</h2></div><span class="status warning">待确认</span></div>
+      <div class="strategy-context">
+        <div><p class="field-label">股票池</p><p class="universe">沪深 300 <span>000300.SH</span></p></div>
+        <div><p class="field-label">计算口径</p><p class="assumption">利润增长使用归母净利润两年 CAGR；稳定性使用 60 个交易日年化波动率。</p></div>
+      </div>
+      <div class="condition-list" id="conditionList"></div>
+      <div class="confirm-bar"><p>当前版本确认后锁定，之后的修改会生成新版本。</p><button class="primary" id="confirmButton" type="button">确认并执行</button></div>
+    </section>
+
+    <section id="resultsPanel" class="hidden" aria-labelledby="results-title">
+      <div class="result-header">
+        <div><p class="step">03</p><h2 id="results-title">策略匹配结果</h2><p id="resultSubtitle" class="helper" aria-live="polite"></p></div>
+        <div class="result-tags"><span id="versionTag" class="tag"></span><span class="tag">沪深 300</span><span class="tag">as of 2026-10-02</span></div>
+      </div>
+
+      <div class="funnel" aria-label="筛选漏斗"><div><b>300</b><span>股票池</span></div><i></i><div><b id="growthCount">0</b><span>增长达标</span></div><i></i><div><b id="valuationCount">0</b><span>估值达标</span></div><i></i><div><b id="candidateCount">0</b><span>候选</span></div></div>
+
+      <div class="results-tools"><p class="helper">展开证据核验每项结论；勾选两到三只标的，进入事实对比。</p><div class="status-legend"><span class="status pass">PASS</span><span class="status fail">FAIL</span><span class="status unknown">UNKNOWN</span></div></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>标的</th><th>利润增长</th><th>PE-TTM</th><th>60 日波动率</th><th>匹配结果</th><th>对比</th><th><span class="sr-only">操作</span></th></tr></thead>
+        <tbody id="resultRows"></tbody>
+      </table></div>
+
+      <section id="comparisonPanel" class="comparison-panel hidden" aria-labelledby="comparison-title">
+        <div class="section-heading"><div><p class="step">RESEARCH HANDOFF</p><h2 id="comparison-title">候选事实对比</h2></div><span id="comparisonCount" class="tag">已选 0 / 3</span></div>
+        <p class="helper">仅比较来源、时点、单位和口径一致的事实。不可比项会保留为数据缺口。</p>
+        <div id="comparisonContent" aria-live="polite"></div>
+      </section>
+
+      <section class="edit-panel" aria-labelledby="edit-title">
+        <div><p class="step">04</p><h2 id="edit-title">修改策略</h2><p class="helper">输入修改意图后，先查看差异，再决定是否生成新版本。</p></div>
+        <div class="edit-row"><input id="editInput" type="text" value="把 PE 改成 20，其他不变" aria-label="策略修改" /><button id="previewButton" class="secondary" type="button">预览修改</button></div>
+        <div id="patchPreview" class="patch hidden" aria-live="polite"></div>
+      </section>
+    </section>
+  </main>
+
+  <aside id="evidenceDrawer" class="drawer hidden" aria-label="证据详情">
+    <div class="drawer-head"><div><p class="step">EVIDENCE</p><h2 id="drawerTitle">证据详情</h2></div><button id="closeDrawer" class="close-button" type="button">关闭</button></div>
+    <div id="evidenceContent"></div>
+  </aside>
+  <div id="backdrop" class="backdrop hidden"></div>
+  <script src="app.js"></script>
+</body>
+</html>
